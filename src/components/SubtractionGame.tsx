@@ -12,12 +12,17 @@ import Typography from "@mui/material/Typography";
 import Stack from "@mui/material/Stack";
 import Paper from "@mui/material/Paper";
 import Divider from "@mui/material/Divider";
+import ToggleButton from "@mui/material/ToggleButton";
+import ToggleButtonGroup from "@mui/material/ToggleButtonGroup";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
+import ListAltIcon from "@mui/icons-material/ListAlt";
+import FlashOnIcon from "@mui/icons-material/FlashOn";
 
 type Bits = 4 | 8;
 type Step = "ones" | "twos" | "add" | "done";
 type StepStatus = "idle" | "correct" | "wrong";
+type Mode = "step" | "direct";
 
 interface Problem {
   bits: Bits;
@@ -154,10 +159,9 @@ function BitInput({
 
 /* ---- Step panel ---- */
 function StepPanel({
-  number, title, active, complete, status, children,
+  title, active, complete, status, children,
 }: {
-  number: number; title: string;
-  active: boolean; complete: boolean; status: StepStatus;
+  title: string; active: boolean; complete: boolean; status: StepStatus;
   children: React.ReactNode;
 }) {
   const borderColor = complete ? "#4caf50" : active ? "#1976d2" : "#e0e0e0";
@@ -190,43 +194,249 @@ function StepPanel({
   );
 }
 
-export default function SubtractionGame() {
-  const [bits, setBits] = useState<Bits>(4);
-  const [problem, setProblem] = useState<Problem>(() => generateProblem(4));
+/* ---- Problem display card (shared) ---- */
+function ProblemCard({
+  problem, bits, answerValue, answerDec, showAnswer,
+}: {
+  problem: Problem; bits: number;
+  answerValue?: string; answerDec?: number; showAnswer: boolean;
+}) {
+  return (
+    <Card variant="outlined" sx={{ borderWidth: 2 }}>
+      <CardContent>
+        <Typography variant="body2" color="text.secondary" textAlign="center" mb={2} fontWeight={500}>
+          2の補数を使って次の引き算を計算してください
+        </Typography>
+        <Stack direction="row" spacing={3} justifyContent="center" alignItems="flex-start" flexWrap="wrap">
+          <Stack alignItems="center" spacing={0.5}>
+            <Typography variant="caption" color="text.secondary">被減数 (A)</Typography>
+            <BitRow value={problem.minuend} color="blue" />
+            <Typography variant="caption">= {parseInt(problem.minuend, 2)}</Typography>
+          </Stack>
+          <Typography variant="h4" color="text.secondary" sx={{ pt: 1.5 }}>−</Typography>
+          <Stack alignItems="center" spacing={0.5}>
+            <Typography variant="caption" color="text.secondary">減数 (B)</Typography>
+            <BitRow value={problem.subtrahend} color="orange" />
+            <Typography variant="caption">= {parseInt(problem.subtrahend, 2)}</Typography>
+          </Stack>
+          <Typography variant="h4" color="text.secondary" sx={{ pt: 1.5 }}>=</Typography>
+          <Stack alignItems="center" spacing={0.5}>
+            <Typography variant="caption" color="text.secondary">答え</Typography>
+            {showAnswer && answerValue ? (
+              <>
+                <BitRow value={answerValue} color="green" />
+                <Typography variant="caption">= {answerDec}</Typography>
+              </>
+            ) : (
+              <Stack direction="row" spacing={0.5}>
+                {Array.from({ length: bits }).map((_, i) => (
+                  <Box key={i} sx={{
+                    width: 40, height: 46, border: "2px dashed #bdbdbd",
+                    borderRadius: 1.5, display: "flex", alignItems: "center",
+                    justifyContent: "center", color: "#bdbdbd",
+                    fontFamily: "monospace", fontSize: "1.25rem",
+                  }}>?</Box>
+                ))}
+              </Stack>
+            )}
+          </Stack>
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ================================================================
+   Direct mode
+   ================================================================ */
+function DirectMode({
+  problem, score, total, onCorrect, onWrong, onNext,
+}: {
+  problem: Problem;
+  score: number; total: number;
+  onCorrect: () => void; onWrong: () => void; onNext: () => void;
+}) {
+  const [input, setInput] = useState("");
+  const [status, setStatus] = useState<"idle" | "correct" | "wrong">("idle");
+  const [showBreakdown, setShowBreakdown] = useState(false);
+
+  const correctOnes = onesComp(problem.subtrahend);
+  const correctTwos = twosComp(problem.subtrahend);
+  const { result: correctAnswer, carry: hasCarry } = addBinary(problem.minuend, correctTwos);
+  const expectedDec = parseInt(problem.minuend, 2) - parseInt(problem.subtrahend, 2);
+
+  const check = () => {
+    const val = input.replace(/ /g, "0").padStart(problem.bits, "0");
+    if (val === correctAnswer) {
+      setStatus("correct");
+      onCorrect();
+    } else {
+      setStatus("wrong");
+      onWrong();
+    }
+  };
+
+  const handleNext = () => {
+    setInput("");
+    setStatus("idle");
+    setShowBreakdown(false);
+    onNext();
+  };
+
+  return (
+    <Stack spacing={3}>
+      <ProblemCard
+        problem={problem}
+        bits={problem.bits}
+        answerValue={correctAnswer}
+        answerDec={expectedDec}
+        showAnswer={status !== "idle"}
+      />
+
+      {/* Input area */}
+      <Paper variant="outlined" sx={{ p: 3 }}>
+        <Stack spacing={2} alignItems="center">
+          <Typography variant="body2" color="text.secondary" fontWeight={500}>
+            答えを2進数で直接入力してください
+          </Typography>
+          <BitInput
+            bits={problem.bits}
+            value={input}
+            onChange={setInput}
+            disabled={status !== "idle"}
+            status={status}
+            onEnter={status === "idle" ? check : handleNext}
+          />
+          {status === "idle" ? (
+            <Button variant="contained" size="large" onClick={check}>
+              答え合わせ
+            </Button>
+          ) : (
+            <Stack spacing={1.5} alignItems="center" width="100%">
+              <Alert
+                severity={status === "correct" ? "success" : "error"}
+                sx={{ width: "100%", maxWidth: 420 }}
+              >
+                <AlertTitle>{status === "correct" ? "✓ 正解！" : "✗ 不正解"}</AlertTitle>
+                {status === "wrong" && (
+                  <Typography variant="body2">
+                    正解:{" "}
+                    <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>
+                      {correctAnswer}
+                    </Box>
+                    {" "}(= {expectedDec})
+                  </Typography>
+                )}
+                {status === "correct" && (
+                  <Typography variant="body2" fontFamily="monospace">
+                    {problem.minuend}₂ − {problem.subtrahend}₂ = {correctAnswer}₂ (= {expectedDec})
+                  </Typography>
+                )}
+              </Alert>
+
+              <Stack direction="row" spacing={1}>
+                <Button variant="contained" color={status === "correct" ? "success" : "primary"} onClick={handleNext}>
+                  次の問題 →
+                </Button>
+                {status === "wrong" && (
+                  <Button variant="outlined" onClick={() => setShowBreakdown((v) => !v)}>
+                    {showBreakdown ? "解説を閉じる" : "解説を見る"}
+                  </Button>
+                )}
+              </Stack>
+            </Stack>
+          )}
+        </Stack>
+      </Paper>
+
+      {/* Breakdown after wrong answer */}
+      {showBreakdown && (
+        <Paper variant="outlined" sx={{ p: 2.5, borderColor: "#7b1fa2", borderWidth: 2 }}>
+          <Typography variant="subtitle2" fontWeight={700} color="secondary.main" mb={2}>
+            補数計算の手順
+          </Typography>
+          <Stack spacing={1.5}>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Typography variant="body2" color="text.secondary" sx={{ minWidth: 180 }}>
+                ① {problem.subtrahend} の1の補数:
+              </Typography>
+              <BitRow value={correctOnes} color="default" />
+            </Stack>
+            <Stack direction="row" spacing={2} alignItems="center">
+              <Typography variant="body2" color="text.secondary" sx={{ minWidth: 180 }}>
+                ② 2の補数（+1）:
+              </Typography>
+              <BitRow value={correctTwos} color="default" />
+            </Stack>
+            <Divider />
+            <Stack spacing={0.5}>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="body2" sx={{ width: 16 }}></Typography>
+                <BitRow value={problem.minuend} color="blue" />
+                <Typography variant="caption" color="text.secondary">({parseInt(problem.minuend, 2)})</Typography>
+              </Stack>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="body2" fontWeight={700} sx={{ width: 16 }}>+</Typography>
+                <BitRow value={correctTwos} color="default" />
+                <Typography variant="caption" color="text.secondary">({parseInt(correctTwos, 2)})</Typography>
+              </Stack>
+              <Divider sx={{ my: 0.5 }} />
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Typography variant="body2" sx={{ width: 16 }}></Typography>
+                <BitRow value={correctAnswer} color="green" />
+                {hasCarry && (
+                  <Chip label="キャリー無視" size="small" color="warning" variant="outlined" />
+                )}
+              </Stack>
+            </Stack>
+          </Stack>
+        </Paper>
+      )}
+
+      <Alert severity="info">
+        <AlertTitle>なぜ引き算が加算でできるのか？</AlertTitle>
+        <Typography variant="body2">
+          Nビットで A − B を計算するとき、Bの2の補数は 2ᴺ − B です。
+          A + (2ᴺ − B) = A − B + 2ᴺ となり、最上位ビットへのキャリーが 2ᴺ に対応するため、
+          それを捨てれば A − B が得られます。
+        </Typography>
+      </Alert>
+    </Stack>
+  );
+}
+
+/* ================================================================
+   Step-by-step mode (original)
+   ================================================================ */
+function StepMode({
+  problem, score, total, onCorrect, onWrong, onNext,
+}: {
+  problem: Problem;
+  score: number; total: number;
+  onCorrect: () => void; onWrong: () => void; onNext: () => void;
+}) {
   const [inputs, setInputs] = useState({ ones: "", twos: "", add: "" });
   const [statuses, setStatuses] = useState<Record<"ones" | "twos" | "add", StepStatus>>({
     ones: "idle", twos: "idle", add: "idle",
   });
   const [step, setStep] = useState<Step>("ones");
-  const [score, setScore] = useState(0);
-  const [total, setTotal] = useState(0);
 
   const correctOnes = onesComp(problem.subtrahend);
   const correctTwos = twosComp(problem.subtrahend);
   const { result: correctAdd, carry: hasCarry } = addBinary(problem.minuend, correctTwos);
   const expectedDec = parseInt(problem.minuend, 2) - parseInt(problem.subtrahend, 2);
 
-  const reset = useCallback((newBits?: Bits) => {
-    const b = newBits ?? bits;
-    setProblem(generateProblem(b));
-    setInputs({ ones: "", twos: "", add: "" });
-    setStatuses({ ones: "idle", twos: "idle", add: "idle" });
-    setStep("ones");
-  }, [bits]);
-
-  const changeBits = (b: Bits) => { setBits(b); reset(b); };
-
   const check = (which: "ones" | "twos" | "add") => {
-    const val = inputs[which].replace(/ /g, "0").padStart(bits, "0");
+    const val = inputs[which].replace(/ /g, "0").padStart(problem.bits, "0");
     const expected = which === "ones" ? correctOnes : which === "twos" ? correctTwos : correctAdd;
     const ok = val === expected;
     setStatuses((s) => ({ ...s, [which]: ok ? "correct" : "wrong" }));
     if (ok) {
       if (which === "ones") setStep("twos");
       else if (which === "twos") setStep("add");
-      else { setStep("done"); setScore((s) => s + 1); setTotal((t) => t + 1); }
+      else { setStep("done"); onCorrect(); }
     } else {
-      if (which === "add") setTotal((t) => t + 1);
+      if (which === "add") onWrong();
     }
   };
 
@@ -239,6 +449,13 @@ export default function SubtractionGame() {
     else setStep("done");
   };
 
+  const handleNext = () => {
+    setInputs({ ones: "", twos: "", add: "" });
+    setStatuses({ ones: "idle", twos: "idle", add: "idle" });
+    setStep("ones");
+    onNext();
+  };
+
   const isActive = (s: Step) => step === s;
   const isComplete = (s: Step): boolean => {
     if (s === "ones") return statuses.ones === "correct";
@@ -249,61 +466,16 @@ export default function SubtractionGame() {
 
   return (
     <Stack spacing={3}>
-      {/* Settings */}
-      <Paper variant="outlined" sx={{ p: 2 }}>
-        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }} justifyContent="space-between">
-          <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="body2" color="text.secondary" fontWeight={500}>ビット数:</Typography>
-            <ButtonGroup size="small">
-              {([4, 8] as Bits[]).map((b) => (
-                <Button key={b} onClick={() => changeBits(b)} variant={bits === b ? "contained" : "outlined"}>
-                  {b}ビット
-                </Button>
-              ))}
-            </ButtonGroup>
-          </Stack>
-          <Chip label={`スコア: ${score} / ${total}`} color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
-          <Button variant="outlined" size="small" onClick={() => reset()}>新しい問題</Button>
-        </Stack>
-      </Paper>
-
-      {/* Problem statement */}
-      <Card variant="outlined" sx={{ borderWidth: 2 }}>
-        <CardContent>
-          <Typography variant="body2" color="text.secondary" textAlign="center" mb={2} fontWeight={500}>
-            2の補数を使って次の引き算を計算してください
-          </Typography>
-          <Stack direction="row" spacing={3} justifyContent="center" alignItems="flex-start" flexWrap="wrap">
-            <Stack alignItems="center" spacing={0.5}>
-              <Typography variant="caption" color="text.secondary">被減数 (A)</Typography>
-              <BitRow value={problem.minuend} color="blue" />
-              <Typography variant="caption">= {parseInt(problem.minuend, 2)}</Typography>
-            </Stack>
-            <Typography variant="h4" color="text.secondary" sx={{ pt: 1.5 }}>−</Typography>
-            <Stack alignItems="center" spacing={0.5}>
-              <Typography variant="caption" color="text.secondary">減数 (B)</Typography>
-              <BitRow value={problem.subtrahend} color="orange" />
-              <Typography variant="caption">= {parseInt(problem.subtrahend, 2)}</Typography>
-            </Stack>
-            <Typography variant="h4" color="text.secondary" sx={{ pt: 1.5 }}>=</Typography>
-            <Stack alignItems="center" spacing={0.5}>
-              <Typography variant="caption" color="text.secondary">答え</Typography>
-              {step === "done"
-                ? <><BitRow value={correctAdd} color="green" /><Typography variant="caption">= {expectedDec}</Typography></>
-                : (
-                  <Stack direction="row" spacing={0.5}>
-                    {Array.from({ length: bits }).map((_, i) => (
-                      <Box key={i} sx={{ width: 40, height: 46, border: "2px dashed #bdbdbd", borderRadius: 1.5, display: "flex", alignItems: "center", justifyContent: "center", color: "#bdbdbd", fontFamily: "monospace", fontSize: "1.25rem" }}>?</Box>
-                    ))}
-                  </Stack>
-                )}
-            </Stack>
-          </Stack>
-        </CardContent>
-      </Card>
+      <ProblemCard
+        problem={problem}
+        bits={problem.bits}
+        answerValue={correctAdd}
+        answerDec={expectedDec}
+        showAnswer={step === "done"}
+      />
 
       {/* Step 1 */}
-      <StepPanel number={1} title="① 減数(B)の1の補数を求める" active={isActive("ones")} complete={isComplete("ones")} status={statuses.ones}>
+      <StepPanel title="① 減数(B)の1の補数を求める" active={isActive("ones")} complete={isComplete("ones")} status={statuses.ones}>
         <Typography variant="body2" color="text.secondary" mb={1.5}>
           <Box component="span" sx={{ fontFamily: "monospace", bgcolor: "background.paper", px: 0.5, borderRadius: 0.5, border: "1px solid #e0e0e0" }}>{problem.subtrahend}</Box>
           {" "}の全ビットを反転させてください（0↔1）
@@ -312,7 +484,7 @@ export default function SubtractionGame() {
           <BitRow value={correctOnes} color="green" />
         ) : (
           <Stack spacing={1.5} alignItems="center">
-            <BitInput bits={bits} value={inputs.ones} onChange={(v) => setInputs((s) => ({ ...s, ones: v }))}
+            <BitInput bits={problem.bits} value={inputs.ones} onChange={(v) => setInputs((s) => ({ ...s, ones: v }))}
               disabled={!isActive("ones")} status={statuses.ones} onEnter={() => check("ones")} />
             {statuses.ones === "wrong" && (
               <Typography variant="caption" color="error">正解: <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>{correctOnes}</Box></Typography>
@@ -326,7 +498,7 @@ export default function SubtractionGame() {
       </StepPanel>
 
       {/* Step 2 */}
-      <StepPanel number={2} title="② 2の補数を求める（1の補数 + 1）" active={isActive("twos")} complete={isComplete("twos")} status={statuses.twos}>
+      <StepPanel title="② 2の補数を求める（1の補数 + 1）" active={isActive("twos")} complete={isComplete("twos")} status={statuses.twos}>
         <Typography variant="body2" color="text.secondary" mb={1.5}>
           1の補数{" "}
           <Box component="span" sx={{ fontFamily: "monospace", bgcolor: "background.paper", px: 0.5, borderRadius: 0.5, border: "1px solid #e0e0e0" }}>
@@ -338,7 +510,7 @@ export default function SubtractionGame() {
           <BitRow value={correctTwos} color="green" />
         ) : (
           <Stack spacing={1.5} alignItems="center">
-            <BitInput bits={bits} value={inputs.twos} onChange={(v) => setInputs((s) => ({ ...s, twos: v }))}
+            <BitInput bits={problem.bits} value={inputs.twos} onChange={(v) => setInputs((s) => ({ ...s, twos: v }))}
               disabled={!isActive("twos")} status={statuses.twos} onEnter={() => check("twos")} />
             {statuses.twos === "wrong" && (
               <Typography variant="caption" color="error">正解: <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>{correctTwos}</Box></Typography>
@@ -352,16 +524,16 @@ export default function SubtractionGame() {
       </StepPanel>
 
       {/* Step 3 */}
-      <StepPanel number={3} title="③ A + 2の補数 を計算する" active={isActive("add")} complete={isComplete("add")} status={statuses.add}>
+      <StepPanel title="③ A + 2の補数 を計算する" active={isActive("add")} complete={isComplete("add")} status={statuses.add}>
         <Stack spacing={1} mb={1.5}>
           <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="body2" sx={{ width: 16, textAlign: "right" }}></Typography>
+            <Typography variant="body2" sx={{ width: 16 }}></Typography>
             <BitRow value={problem.minuend} color="blue" />
             <Typography variant="caption" color="text.secondary">({parseInt(problem.minuend, 2)})</Typography>
           </Stack>
           <Stack direction="row" spacing={1} alignItems="center">
-            <Typography variant="body2" fontWeight={700} sx={{ width: 16, textAlign: "right" }}>+</Typography>
-            <BitRow value={isComplete("twos") ? correctTwos : "?".repeat(bits)} color={isComplete("twos") ? "green" : "default"} />
+            <Typography variant="body2" fontWeight={700} sx={{ width: 16 }}>+</Typography>
+            <BitRow value={isComplete("twos") ? correctTwos : "?".repeat(problem.bits)} color={isComplete("twos") ? "green" : "default"} />
             {isComplete("twos") && <Typography variant="caption" color="text.secondary">({parseInt(correctTwos, 2)})</Typography>}
           </Stack>
           <Divider />
@@ -378,8 +550,8 @@ export default function SubtractionGame() {
           </Stack>
         ) : (
           <Stack spacing={1.5} alignItems="center">
-            <Typography variant="caption" color="text.secondary">{bits}ビット分の結果を入力（キャリー除く）</Typography>
-            <BitInput bits={bits} value={inputs.add} onChange={(v) => setInputs((s) => ({ ...s, add: v }))}
+            <Typography variant="caption" color="text.secondary">{problem.bits}ビット分の結果を入力（キャリー除く）</Typography>
+            <BitInput bits={problem.bits} value={inputs.add} onChange={(v) => setInputs((s) => ({ ...s, add: v }))}
               disabled={!isActive("add")} status={statuses.add} onEnter={() => check("add")} />
             {statuses.add === "wrong" && (
               <Typography variant="caption" color="error">正解: <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>{correctAdd}</Box></Typography>
@@ -405,12 +577,11 @@ export default function SubtractionGame() {
             <Box component="span" fontWeight={700}>{expectedDec}</Box>)
           </Typography>
           <Box mt={2}>
-            <Button variant="contained" color="success" onClick={() => reset()}>次の問題 →</Button>
+            <Button variant="contained" color="success" onClick={handleNext}>次の問題 →</Button>
           </Box>
         </Alert>
       )}
 
-      {/* Info */}
       <Alert severity="info">
         <AlertTitle>なぜ引き算が加算でできるのか？</AlertTitle>
         <Typography variant="body2">
@@ -419,6 +590,89 @@ export default function SubtractionGame() {
           それを捨てれば A − B が得られます。
         </Typography>
       </Alert>
+    </Stack>
+  );
+}
+
+/* ================================================================
+   Root component
+   ================================================================ */
+export default function SubtractionGame() {
+  const [bits, setBits] = useState<Bits>(4);
+  const [mode, setMode] = useState<Mode>("step");
+  const [problem, setProblem] = useState<Problem>(() => generateProblem(4));
+  const [score, setScore] = useState(0);
+  const [total, setTotal] = useState(0);
+
+  const reset = useCallback((newBits?: Bits) => {
+    const b = newBits ?? bits;
+    setProblem(generateProblem(b));
+  }, [bits]);
+
+  const changeBits = (b: Bits) => { setBits(b); setProblem(generateProblem(b)); };
+
+  const handleCorrect = () => { setScore((s) => s + 1); setTotal((t) => t + 1); };
+  const handleWrong   = () => { setTotal((t) => t + 1); };
+  const handleNext    = () => reset();
+
+  return (
+    <Stack spacing={3}>
+      {/* Settings bar */}
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }} justifyContent="space-between" flexWrap="wrap">
+          {/* Bit selector */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2" color="text.secondary" fontWeight={500}>ビット数:</Typography>
+            <ButtonGroup size="small">
+              {([4, 8] as Bits[]).map((b) => (
+                <Button key={b} onClick={() => changeBits(b)} variant={bits === b ? "contained" : "outlined"}>
+                  {b}ビット
+                </Button>
+              ))}
+            </ButtonGroup>
+          </Stack>
+
+          {/* Mode toggle */}
+          <ToggleButtonGroup
+            value={mode}
+            exclusive
+            onChange={(_, v: Mode | null) => { if (v) { setMode(v); reset(); } }}
+            size="small"
+          >
+            <ToggleButton value="step" sx={{ gap: 0.5, px: 2 }}>
+              <ListAltIcon fontSize="small" />
+              <Typography variant="body2" fontWeight={600}>ステップごと</Typography>
+            </ToggleButton>
+            <ToggleButton value="direct" sx={{ gap: 0.5, px: 2 }}>
+              <FlashOnIcon fontSize="small" />
+              <Typography variant="body2" fontWeight={600}>直接入力</Typography>
+            </ToggleButton>
+          </ToggleButtonGroup>
+
+          {/* Score + New problem */}
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Chip label={`スコア: ${score} / ${total}`} color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
+            <Button variant="outlined" size="small" onClick={() => reset()}>新しい問題</Button>
+          </Stack>
+        </Stack>
+      </Paper>
+
+      {/* Mode content */}
+      {mode === "step" ? (
+        <StepMode
+          key={`step-${problem.minuend}-${problem.subtrahend}`}
+          problem={problem}
+          score={score} total={total}
+          onCorrect={handleCorrect} onWrong={handleWrong} onNext={handleNext}
+        />
+      ) : (
+        <DirectMode
+          key={`direct-${problem.minuend}-${problem.subtrahend}`}
+          problem={problem}
+          score={score} total={total}
+          onCorrect={handleCorrect} onWrong={handleWrong} onNext={handleNext}
+        />
+      )}
     </Stack>
   );
 }
