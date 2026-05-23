@@ -1,55 +1,47 @@
 "use client";
 import { useState } from "react";
+import Box from "@mui/material/Box";
+import Container from "@mui/material/Container";
+import Tab from "@mui/material/Tab";
+import Tabs from "@mui/material/Tabs";
+import Typography from "@mui/material/Typography";
 import ComplementQuiz from "@/components/ComplementQuiz";
 import SubtractionGame from "@/components/SubtractionGame";
 
-type Tab = "quiz" | "subtraction";
+type TabValue = "quiz" | "subtraction";
 
 export default function Home() {
-  const [tab, setTab] = useState<Tab>("quiz");
+  const [tab, setTab] = useState<TabValue>("quiz");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
-      <div className="max-w-2xl mx-auto px-4 py-8">
+    <Box sx={{ minHeight: "100vh", backgroundColor: "background.default", py: 4 }}>
+      <Container maxWidth="md">
         {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+        <Box textAlign="center" mb={4}>
+          <Typography variant="h4" fontWeight={700} gutterBottom>
             2進数 補数ゲーム
-          </h1>
-          <p className="text-gray-500 text-sm">
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
             2進数の補数と、補数を使った引き算を学ぼう
-          </p>
-        </div>
+          </Typography>
+        </Box>
 
-        {/* Tab navigation */}
-        <div className="flex bg-white rounded-xl p-1 shadow-sm border border-gray-200 mb-6">
-          <button
-            onClick={() => setTab("quiz")}
-            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all ${
-              tab === "quiz"
-                ? "bg-blue-600 text-white shadow-sm"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-            }`}
+        {/* Tabs */}
+        <Box sx={{ bgcolor: "background.paper", borderRadius: 3, boxShadow: 1, mb: 3 }}>
+          <Tabs
+            value={tab}
+            onChange={(_, v: TabValue) => setTab(v)}
+            variant="fullWidth"
+            sx={{ borderRadius: 3 }}
           >
-            🎯 補数クイズ
-          </button>
-          <button
-            onClick={() => setTab("subtraction")}
-            className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all ${
-              tab === "subtraction"
-                ? "bg-purple-600 text-white shadow-sm"
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-            }`}
-          >
-            ➗ 補数で引き算
-          </button>
-        </div>
+            <Tab value="quiz" label="🎯 補数クイズ" sx={{ fontWeight: 600, fontSize: "0.95rem" }} />
+            <Tab value="subtraction" label="➗ 補数で引き算" sx={{ fontWeight: 600, fontSize: "0.95rem" }} />
+          </Tabs>
+        </Box>
 
         {/* Content */}
-        <div>
-          {tab === "quiz" ? <ComplementQuiz /> : <SubtractionGame />}
-        </div>
-      </div>
-    </div>
+        {tab === "quiz" ? <ComplementQuiz /> : <SubtractionGame />}
+      </Container>
+    </Box>
   );
 }

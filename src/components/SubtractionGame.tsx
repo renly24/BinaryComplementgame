@@ -1,20 +1,48 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import ButtonGroup from "@mui/material/ButtonGroup";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
+import Typography from "@mui/material/Typography";
+import Stack from "@mui/material/Stack";
+import Paper from "@mui/material/Paper";
+import Divider from "@mui/material/Divider";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import RadioButtonUncheckedIcon from "@mui/icons-material/RadioButtonUnchecked";
 
 type Bits = 4 | 8;
+type Step = "ones" | "twos" | "add" | "done";
+type StepStatus = "idle" | "correct" | "wrong";
+
+interface Problem {
+  bits: Bits;
+  minuend: string;
+  subtrahend: string;
+}
 
 function randomBinary(bits: Bits): string {
   const max = (1 << bits) - 1;
-  return Math.floor(Math.random() * (max + 1))
-    .toString(2)
-    .padStart(bits, "0");
+  return Math.floor(Math.random() * (max + 1)).toString(2).padStart(bits, "0");
 }
 
 function onesComp(bin: string): string {
-  return bin
-    .split("")
-    .map((b) => (b === "0" ? "1" : "0"))
-    .join("");
+  return bin.split("").map((b) => (b === "0" ? "1" : "0")).join("");
+}
+
+function twosComp(bin: string): string {
+  const ones = onesComp(bin);
+  let carry = 1;
+  const arr = ones.split("").reverse().map((b) => {
+    const s = parseInt(b) + carry;
+    carry = s >> 1;
+    return (s & 1).toString();
+  });
+  return arr.reverse().join("").slice(-bin.length);
 }
 
 function addBinary(a: string, b: string): { result: string; carry: boolean } {
@@ -31,35 +59,13 @@ function addBinary(a: string, b: string): { result: string; carry: boolean } {
   return { result, carry: carry === 1 };
 }
 
-function twosComp(bin: string): string {
-  const ones = onesComp(bin);
-  const { result } = addBinary(ones, "1".padStart(ones.length, "0").slice(-ones.length).replace(/^./, "0").replace(/.$/, "1"));
-  // simpler: add 1 bit by bit
-  let carry = 1;
-  const arr = ones.split("").reverse().map((b) => {
-    const s = parseInt(b) + carry;
-    carry = s >> 1;
-    return (s & 1).toString();
-  });
-  return arr.reverse().join("").slice(-bin.length);
-}
-
-type Step = "ones" | "twos" | "add" | "result";
-
-interface Problem {
-  bits: Bits;
-  minuend: string;
-  subtrahend: string;
-}
-
 function generateProblem(bits: Bits): Problem {
-  // ensure minuend > subtrahend so result is positive
   const max = (1 << bits) - 1;
   let a: number, b: number;
   do {
     a = Math.floor(Math.random() * (max + 1));
-    b = Math.floor(Math.random() * (max + 1));
-  } while (a <= b || b === 0);
+    b = Math.floor(Math.random() * max) + 1;
+  } while (a <= b);
   return {
     bits,
     minuend: a.toString(2).padStart(bits, "0"),
@@ -67,548 +73,352 @@ function generateProblem(bits: Bits): Problem {
   };
 }
 
-interface StepState {
-  ones: string;
-  twos: string;
-  addResult: string;
-  finalAnswer: string;
-}
-
-interface StepStatus {
-  ones: "idle" | "correct" | "wrong";
-  twos: "idle" | "correct" | "wrong";
-  add: "idle" | "correct" | "wrong";
-}
-
-function BitDisplay({
-  value,
-  highlight = false,
-}: {
-  value: string;
-  highlight?: boolean;
-}) {
+/* ---- Bit display (read-only) ---- */
+function BitRow({ value, color = "default" }: { value: string; color?: "blue" | "orange" | "green" | "default" }) {
+  const palette = {
+    blue:    { bg: "#e3f2fd", border: "#90caf9", text: "#1565c0" },
+    orange:  { bg: "#fff8e1", border: "#ffe082", text: "#e65100" },
+    green:   { bg: "#e8f5e9", border: "#a5d6a7", text: "#1b5e20" },
+    default: { bg: "#f5f5f5", border: "#bdbdbd", text: "#424242" },
+  };
+  const c = palette[color];
   return (
-    <div className="flex gap-1 justify-center">
+    <Stack direction="row" spacing={0.5} justifyContent="center">
       {value.split("").map((bit, i) => (
-        <div
+        <Box
           key={i}
-          className={`w-9 h-10 flex items-center justify-center rounded-md text-lg font-mono font-bold border-2 transition-colors ${
-            highlight
-              ? "bg-yellow-50 border-yellow-300 text-yellow-800"
-              : "bg-gray-50 border-gray-200 text-gray-700"
-          }`}
+          sx={{
+            width: 40, height: 46,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            backgroundColor: c.bg, border: `2px solid ${c.border}`,
+            borderRadius: 1.5, fontFamily: "monospace",
+            fontSize: "1.25rem", fontWeight: 700, color: c.text,
+          }}
         >
           {bit}
-        </div>
+        </Box>
       ))}
-    </div>
+    </Stack>
   );
 }
 
+/* ---- Bit input (interactive, cell-by-cell) ---- */
 function BitInput({
-  bits,
-  value,
-  onChange,
-  disabled,
-  status,
-  onEnter,
+  bits, value, onChange, disabled, status, onEnter,
 }: {
-  bits: number;
-  value: string;
-  onChange: (v: string) => void;
-  disabled: boolean;
-  status: "idle" | "correct" | "wrong";
-  onEnter?: () => void;
+  bits: number; value: string; onChange: (v: string) => void;
+  disabled: boolean; status: StepStatus; onEnter?: () => void;
 }) {
-  const borderColor =
-    status === "correct"
-      ? "border-green-400 bg-green-50"
-      : status === "wrong"
-      ? "border-red-400 bg-red-50"
-      : "border-gray-300 focus-within:border-blue-400";
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const borderColor = status === "correct" ? "#4caf50" : status === "wrong" ? "#f44336" : "#90caf9";
+  const bg = status === "correct" ? "#e8f5e9" : status === "wrong" ? "#ffebee" : "#e3f2fd";
 
   return (
-    <div className={`flex gap-1 justify-center p-2 rounded-lg border-2 ${borderColor}`}>
+    <Stack direction="row" spacing={0.5} justifyContent="center"
+      sx={{ p: 1, border: `2px solid ${borderColor}`, borderRadius: 2, backgroundColor: bg, transition: "all 0.2s" }}>
       {Array.from({ length: bits }).map((_, i) => (
-        <input
+        <Box
           key={i}
+          component="input"
           type="text"
           maxLength={1}
-          value={value[i] ?? ""}
+          value={value[i] === " " || value[i] === undefined ? "" : value[i]}
           disabled={disabled}
-          onChange={(e) => {
+          ref={(el: HTMLInputElement | null) => { refs.current[i] = el; }}
+          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
             const v = e.target.value.replace(/[^01]/g, "");
             const arr = value.padEnd(bits, " ").split("");
             arr[i] = v || " ";
-            const next = arr.join("");
-            onChange(next);
-            if (v && i < bits - 1) {
-              const el = document.getElementById(`bit-${i + 1}`);
-              el?.focus();
-            }
+            onChange(arr.join(""));
+            if (v && i < bits - 1) refs.current[i + 1]?.focus();
           }}
-          onKeyDown={(e) => {
-            if (e.key === "Backspace" && !value[i] && i > 0) {
-              const el = document.getElementById(`bit-${i - 1}`);
-              el?.focus();
+          onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
+            if (e.key === "Backspace" && !value[i]?.trim() && i > 0) {
+              refs.current[i - 1]?.focus();
             }
             if (e.key === "Enter" && onEnter) onEnter();
           }}
-          id={`bit-${i}`}
-          className="w-9 h-10 text-center text-lg font-mono font-bold rounded-md border border-gray-200 outline-none focus:border-blue-400 disabled:opacity-50 bg-transparent"
+          sx={{
+            width: 40, height: 46, textAlign: "center",
+            fontFamily: "monospace", fontSize: "1.25rem", fontWeight: 700,
+            border: "1px solid #bdbdbd", borderRadius: 1,
+            outline: "none", background: "transparent",
+            "&:focus": { borderColor: "#1976d2" },
+            "&:disabled": { opacity: 0.5, cursor: "not-allowed" },
+          }}
         />
       ))}
-    </div>
+    </Stack>
   );
 }
 
-function StatusBadge({ status }: { status: "idle" | "correct" | "wrong" }) {
-  if (status === "idle") return null;
+/* ---- Step panel ---- */
+function StepPanel({
+  number, title, active, complete, status, children,
+}: {
+  number: number; title: string;
+  active: boolean; complete: boolean; status: StepStatus;
+  children: React.ReactNode;
+}) {
+  const borderColor = complete ? "#4caf50" : active ? "#1976d2" : "#e0e0e0";
+  const bgColor = complete ? "#f1f8e9" : active ? "#e3f2fd" : "#fafafa";
+
   return (
-    <span
-      className={`text-sm font-bold px-2 py-0.5 rounded-full ${
-        status === "correct"
-          ? "bg-green-100 text-green-700"
-          : "bg-red-100 text-red-700"
-      }`}
+    <Paper
+      variant="outlined"
+      sx={{
+        border: `2px solid ${borderColor}`, backgroundColor: bgColor,
+        p: 2.5, opacity: !active && !complete ? 0.55 : 1,
+        transition: "all 0.3s",
+      }}
     >
-      {status === "correct" ? "✓ 正解" : "✗ 不正解"}
-    </span>
+      <Stack direction="row" spacing={1.5} alignItems="center" mb={2}>
+        {complete
+          ? <CheckCircleIcon color="success" />
+          : <RadioButtonUncheckedIcon color={active ? "primary" : "disabled"} />}
+        <Typography variant="subtitle1" fontWeight={700}>{title}</Typography>
+        {status !== "idle" && (
+          <Chip
+            label={status === "correct" ? "✓ 正解" : "✗ 不正解"}
+            size="small"
+            color={status === "correct" ? "success" : "error"}
+          />
+        )}
+      </Stack>
+      {children}
+    </Paper>
   );
 }
 
 export default function SubtractionGame() {
   const [bits, setBits] = useState<Bits>(4);
   const [problem, setProblem] = useState<Problem>(() => generateProblem(4));
-  const [stepState, setStepState] = useState<StepState>({
-    ones: "",
-    twos: "",
-    addResult: "",
-    finalAnswer: "",
+  const [inputs, setInputs] = useState({ ones: "", twos: "", add: "" });
+  const [statuses, setStatuses] = useState<Record<"ones" | "twos" | "add", StepStatus>>({
+    ones: "idle", twos: "idle", add: "idle",
   });
-  const [stepStatus, setStepStatus] = useState<StepStatus>({
-    ones: "idle",
-    twos: "idle",
-    add: "idle",
-  });
-  const [currentStep, setCurrentStep] = useState<Step>("ones");
-  const [done, setDone] = useState(false);
+  const [step, setStep] = useState<Step>("ones");
   const [score, setScore] = useState(0);
   const [total, setTotal] = useState(0);
 
   const correctOnes = onesComp(problem.subtrahend);
   const correctTwos = twosComp(problem.subtrahend);
-  const { result: rawSum, carry: hasCarry } = addBinary(problem.minuend, correctTwos);
-  const correctAnswer = rawSum;
-  const expectedDecimal =
-    parseInt(problem.minuend, 2) - parseInt(problem.subtrahend, 2);
+  const { result: correctAdd, carry: hasCarry } = addBinary(problem.minuend, correctTwos);
+  const expectedDec = parseInt(problem.minuend, 2) - parseInt(problem.subtrahend, 2);
 
-  const reset = useCallback(
-    (newBits?: Bits) => {
-      const b = newBits ?? bits;
-      const p = generateProblem(b);
-      setProblem(p);
-      setStepState({ ones: "", twos: "", addResult: "", finalAnswer: "" });
-      setStepStatus({ ones: "idle", twos: "idle", add: "idle" });
-      setCurrentStep("ones");
-      setDone(false);
-    },
-    [bits]
-  );
+  const reset = useCallback((newBits?: Bits) => {
+    const b = newBits ?? bits;
+    setProblem(generateProblem(b));
+    setInputs({ ones: "", twos: "", add: "" });
+    setStatuses({ ones: "idle", twos: "idle", add: "idle" });
+    setStep("ones");
+  }, [bits]);
 
-  const changeBits = (b: Bits) => {
-    setBits(b);
-    reset(b);
-  };
+  const changeBits = (b: Bits) => { setBits(b); reset(b); };
 
-  const checkOnes = () => {
-    const val = stepState.ones.replace(/ /g, "0");
-    const correct = val === correctOnes;
-    setStepStatus((s) => ({ ...s, ones: correct ? "correct" : "wrong" }));
-    if (correct) setCurrentStep("twos");
-  };
-
-  const checkTwos = () => {
-    const val = stepState.twos.replace(/ /g, "0");
-    const correct = val === correctTwos;
-    setStepStatus((s) => ({ ...s, twos: correct ? "correct" : "wrong" }));
-    if (correct) setCurrentStep("add");
-  };
-
-  const checkAdd = () => {
-    const val = stepState.addResult.replace(/ /g, "0");
-    const correct = val === correctAnswer;
-    setStepStatus((s) => ({ ...s, add: correct ? "correct" : "wrong" }));
-    if (correct) {
-      setCurrentStep("result");
-      setDone(true);
-      setScore((s) => s + 1);
-      setTotal((t) => t + 1);
+  const check = (which: "ones" | "twos" | "add") => {
+    const val = inputs[which].replace(/ /g, "0").padStart(bits, "0");
+    const expected = which === "ones" ? correctOnes : which === "twos" ? correctTwos : correctAdd;
+    const ok = val === expected;
+    setStatuses((s) => ({ ...s, [which]: ok ? "correct" : "wrong" }));
+    if (ok) {
+      if (which === "ones") setStep("twos");
+      else if (which === "twos") setStep("add");
+      else { setStep("done"); setScore((s) => s + 1); setTotal((t) => t + 1); }
     } else {
-      setTotal((t) => t + 1);
+      if (which === "add") setTotal((t) => t + 1);
     }
   };
 
-  const skipStep = (step: Step) => {
-    if (step === "ones") {
-      setStepState((s) => ({ ...s, ones: correctOnes }));
-      setStepStatus((st) => ({ ...st, ones: "correct" }));
-      setCurrentStep("twos");
-    } else if (step === "twos") {
-      setStepState((s) => ({ ...s, twos: correctTwos }));
-      setStepStatus((st) => ({ ...st, twos: "correct" }));
-      setCurrentStep("add");
-    } else if (step === "add") {
-      setStepState((s) => ({ ...s, addResult: correctAnswer }));
-      setStepStatus((st) => ({ ...st, add: "correct" }));
-      setCurrentStep("result");
-      setDone(true);
-    }
+  const reveal = (which: "ones" | "twos" | "add") => {
+    const expected = which === "ones" ? correctOnes : which === "twos" ? correctTwos : correctAdd;
+    setInputs((s) => ({ ...s, [which]: expected }));
+    setStatuses((s) => ({ ...s, [which]: "correct" }));
+    if (which === "ones") setStep("twos");
+    else if (which === "twos") setStep("add");
+    else setStep("done");
   };
 
-  const stepActive = (s: Step) => currentStep === s;
-  const stepComplete = (s: Step): boolean => {
-    if (s === "ones") return stepStatus.ones === "correct";
-    if (s === "twos") return stepStatus.twos === "correct";
-    if (s === "add") return stepStatus.add === "correct";
-    return done;
+  const isActive = (s: Step) => step === s;
+  const isComplete = (s: Step): boolean => {
+    if (s === "ones") return statuses.ones === "correct";
+    if (s === "twos") return statuses.twos === "correct";
+    if (s === "add") return statuses.add === "correct";
+    return step === "done";
   };
 
   return (
-    <div className="space-y-6">
+    <Stack spacing={3}>
       {/* Settings */}
-      <div className="flex flex-wrap gap-4 items-center justify-between bg-gray-50 rounded-xl p-4">
-        <div className="flex gap-2 items-center">
-          <span className="text-sm font-medium text-gray-600">ビット数:</span>
-          {([4, 8] as Bits[]).map((b) => (
-            <button
-              key={b}
-              onClick={() => changeBits(b)}
-              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                bits === b
-                  ? "bg-blue-600 text-white"
-                  : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              {b}ビット
-            </button>
-          ))}
-        </div>
-        <div className="text-sm font-semibold text-gray-700">
-          スコア: <span className="text-blue-600">{score}</span> / {total}
-        </div>
-        <button
-          onClick={() => reset()}
-          className="px-4 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-sm font-medium transition-colors"
-        >
-          新しい問題
-        </button>
-      </div>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }} justifyContent="space-between">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2" color="text.secondary" fontWeight={500}>ビット数:</Typography>
+            <ButtonGroup size="small">
+              {([4, 8] as Bits[]).map((b) => (
+                <Button key={b} onClick={() => changeBits(b)} variant={bits === b ? "contained" : "outlined"}>
+                  {b}ビット
+                </Button>
+              ))}
+            </ButtonGroup>
+          </Stack>
+          <Chip label={`スコア: ${score} / ${total}`} color="primary" variant="outlined" sx={{ fontWeight: 700 }} />
+          <Button variant="outlined" size="small" onClick={() => reset()}>新しい問題</Button>
+        </Stack>
+      </Paper>
 
       {/* Problem statement */}
-      <div className="bg-white border-2 border-gray-200 rounded-2xl p-6">
-        <p className="text-center text-gray-500 text-sm mb-4 font-medium">
-          2の補数を使って次の引き算を計算してください
-        </p>
-        <div className="flex items-center justify-center gap-6 text-2xl font-mono">
-          <div className="text-center">
-            <div className="text-xs text-gray-400 mb-1">被減数 (minuend)</div>
-            <BitDisplay value={problem.minuend} />
-            <div className="text-xs text-gray-500 mt-1">= {parseInt(problem.minuend, 2)}</div>
-          </div>
-          <div className="text-gray-400 text-3xl font-bold">−</div>
-          <div className="text-center">
-            <div className="text-xs text-gray-400 mb-1">減数 (subtrahend)</div>
-            <BitDisplay value={problem.subtrahend} highlight />
-            <div className="text-xs text-gray-500 mt-1">= {parseInt(problem.subtrahend, 2)}</div>
-          </div>
-          <div className="text-gray-400 text-3xl font-bold">=</div>
-          <div className="text-center">
-            <div className="text-xs text-gray-400 mb-1">答え</div>
-            {done ? (
-              <>
-                <BitDisplay value={correctAnswer} />
-                <div className="text-xs text-gray-500 mt-1">= {expectedDecimal}</div>
-              </>
-            ) : (
-              <div className="flex gap-1">
-                {Array.from({ length: bits }).map((_, i) => (
-                  <div key={i} className="w-9 h-10 flex items-center justify-center rounded-md border-2 border-dashed border-gray-300 text-gray-300 text-lg font-mono">
-                    ?
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Steps */}
-      <div className="space-y-4">
-        {/* Step 1: 1's complement */}
-        <div
-          className={`border-2 rounded-xl p-5 transition-all ${
-            stepComplete("ones")
-              ? "border-green-300 bg-green-50"
-              : stepActive("ones")
-              ? "border-blue-300 bg-blue-50"
-              : "border-gray-200 bg-gray-50 opacity-60"
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <span
-              className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${
-                stepComplete("ones")
-                  ? "bg-green-500 text-white"
-                  : "bg-blue-500 text-white"
-              }`}
-            >
-              1
-            </span>
-            <h3 className="font-semibold text-gray-800">減数の1の補数を求める</h3>
-            <StatusBadge status={stepStatus.ones} />
-          </div>
-          <p className="text-sm text-gray-600 mb-3">
-            <span className="font-mono bg-white px-1 rounded">{problem.subtrahend}</span>
-            の全ビットを反転させてください
-          </p>
-          {stepComplete("ones") ? (
-            <BitDisplay value={correctOnes} />
-          ) : (
-            <div className="space-y-3">
-              <BitInput
-                bits={bits}
-                value={stepState.ones}
-                onChange={(v) => setStepState((s) => ({ ...s, ones: v }))}
-                disabled={!stepActive("ones")}
-                status={stepStatus.ones}
-                onEnter={checkOnes}
-              />
-              {stepStatus.ones === "wrong" && (
-                <p className="text-sm text-red-600 text-center">
-                  正解: <span className="font-mono font-bold">{correctOnes}</span>
-                </p>
-              )}
-              <div className="flex justify-center gap-2">
-                <button
-                  onClick={checkOnes}
-                  disabled={!stepActive("ones")}
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition-colors"
-                >
-                  確認
-                </button>
-                <button
-                  onClick={() => skipStep("ones")}
-                  disabled={!stepActive("ones")}
-                  className="px-4 py-1.5 bg-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-40 transition-colors"
-                >
-                  答えを見る
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Step 2: 2's complement */}
-        <div
-          className={`border-2 rounded-xl p-5 transition-all ${
-            stepComplete("twos")
-              ? "border-green-300 bg-green-50"
-              : stepActive("twos")
-              ? "border-blue-300 bg-blue-50"
-              : "border-gray-200 bg-gray-50 opacity-60"
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <span
-              className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${
-                stepComplete("twos")
-                  ? "bg-green-500 text-white"
-                  : stepActive("twos")
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-400 text-white"
-              }`}
-            >
-              2
-            </span>
-            <h3 className="font-semibold text-gray-800">2の補数を求める（1の補数 + 1）</h3>
-            <StatusBadge status={stepStatus.twos} />
-          </div>
-          <p className="text-sm text-gray-600 mb-3">
-            1の補数{" "}
-            <span className="font-mono bg-white px-1 rounded">
-              {stepComplete("ones") ? correctOnes : "???"}
-            </span>{" "}
-            に1を加えてください
-          </p>
-          {stepComplete("twos") ? (
-            <BitDisplay value={correctTwos} />
-          ) : (
-            <div className="space-y-3">
-              <BitInput
-                bits={bits}
-                value={stepState.twos}
-                onChange={(v) => setStepState((s) => ({ ...s, twos: v }))}
-                disabled={!stepActive("twos")}
-                status={stepStatus.twos}
-                onEnter={checkTwos}
-              />
-              {stepStatus.twos === "wrong" && (
-                <p className="text-sm text-red-600 text-center">
-                  正解: <span className="font-mono font-bold">{correctTwos}</span>
-                </p>
-              )}
-              <div className="flex justify-center gap-2">
-                <button
-                  onClick={checkTwos}
-                  disabled={!stepActive("twos")}
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition-colors"
-                >
-                  確認
-                </button>
-                <button
-                  onClick={() => skipStep("twos")}
-                  disabled={!stepActive("twos")}
-                  className="px-4 py-1.5 bg-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-40 transition-colors"
-                >
-                  答えを見る
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Step 3: Add */}
-        <div
-          className={`border-2 rounded-xl p-5 transition-all ${
-            stepComplete("add")
-              ? "border-green-300 bg-green-50"
-              : stepActive("add")
-              ? "border-blue-300 bg-blue-50"
-              : "border-gray-200 bg-gray-50 opacity-60"
-          }`}
-        >
-          <div className="flex items-center gap-2 mb-3">
-            <span
-              className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold ${
-                stepComplete("add")
-                  ? "bg-green-500 text-white"
-                  : stepActive("add")
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-400 text-white"
-              }`}
-            >
-              3
-            </span>
-            <h3 className="font-semibold text-gray-800">
-              被減数 + 2の補数 を計算する
-            </h3>
-            <StatusBadge status={stepStatus.add} />
-          </div>
-          <div className="mb-3 space-y-2">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="w-4 text-right font-mono text-gray-400"></span>
-              <BitDisplay value={problem.minuend} />
-              <span className="text-gray-400 text-xs">({parseInt(problem.minuend, 2)})</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <span className="w-4 text-right font-mono text-gray-500 font-bold">+</span>
-              <BitDisplay value={stepComplete("twos") ? correctTwos : "?".repeat(bits)} />
-              <span className="text-gray-400 text-xs">
-                {stepComplete("twos") ? `(${parseInt(correctTwos, 2)})` : ""}
-              </span>
-            </div>
-            <div className="border-t border-gray-300 pt-2">
-              <p className="text-xs text-gray-500 mb-1 text-center">
-                {hasCarry
-                  ? "※ キャリー（最上位ビットからの桁上がり）が出ます → 無視してください"
-                  : "※ キャリーなし"}
-              </p>
-            </div>
-          </div>
-          {stepComplete("add") ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-center gap-3">
-                {hasCarry && (
-                  <span className="text-sm text-orange-600 font-mono bg-orange-50 border border-orange-200 px-2 py-1 rounded">
-                    キャリー: 1 → 無視
-                  </span>
+      <Card variant="outlined" sx={{ borderWidth: 2 }}>
+        <CardContent>
+          <Typography variant="body2" color="text.secondary" textAlign="center" mb={2} fontWeight={500}>
+            2の補数を使って次の引き算を計算してください
+          </Typography>
+          <Stack direction="row" spacing={3} justifyContent="center" alignItems="flex-start" flexWrap="wrap">
+            <Stack alignItems="center" spacing={0.5}>
+              <Typography variant="caption" color="text.secondary">被減数 (A)</Typography>
+              <BitRow value={problem.minuend} color="blue" />
+              <Typography variant="caption">= {parseInt(problem.minuend, 2)}</Typography>
+            </Stack>
+            <Typography variant="h4" color="text.secondary" sx={{ pt: 1.5 }}>−</Typography>
+            <Stack alignItems="center" spacing={0.5}>
+              <Typography variant="caption" color="text.secondary">減数 (B)</Typography>
+              <BitRow value={problem.subtrahend} color="orange" />
+              <Typography variant="caption">= {parseInt(problem.subtrahend, 2)}</Typography>
+            </Stack>
+            <Typography variant="h4" color="text.secondary" sx={{ pt: 1.5 }}>=</Typography>
+            <Stack alignItems="center" spacing={0.5}>
+              <Typography variant="caption" color="text.secondary">答え</Typography>
+              {step === "done"
+                ? <><BitRow value={correctAdd} color="green" /><Typography variant="caption">= {expectedDec}</Typography></>
+                : (
+                  <Stack direction="row" spacing={0.5}>
+                    {Array.from({ length: bits }).map((_, i) => (
+                      <Box key={i} sx={{ width: 40, height: 46, border: "2px dashed #bdbdbd", borderRadius: 1.5, display: "flex", alignItems: "center", justifyContent: "center", color: "#bdbdbd", fontFamily: "monospace", fontSize: "1.25rem" }}>?</Box>
+                    ))}
+                  </Stack>
                 )}
-                <BitDisplay value={correctAnswer} />
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="text-center text-xs text-gray-500 mb-1">
-                {bits}ビットの結果のみを入力（キャリーは除く）
-              </div>
-              <BitInput
-                bits={bits}
-                value={stepState.addResult}
-                onChange={(v) => setStepState((s) => ({ ...s, addResult: v }))}
-                disabled={!stepActive("add")}
-                status={stepStatus.add}
-                onEnter={checkAdd}
-              />
-              {stepStatus.add === "wrong" && (
-                <p className="text-sm text-red-600 text-center">
-                  正解: <span className="font-mono font-bold">{correctAnswer}</span>
-                </p>
-              )}
-              <div className="flex justify-center gap-2">
-                <button
-                  onClick={checkAdd}
-                  disabled={!stepActive("add")}
-                  className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition-colors"
-                >
-                  確認
-                </button>
-                <button
-                  onClick={() => skipStep("add")}
-                  disabled={!stepActive("add")}
-                  className="px-4 py-1.5 bg-gray-200 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-300 disabled:opacity-40 transition-colors"
-                >
-                  答えを見る
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+            </Stack>
+          </Stack>
+        </CardContent>
+      </Card>
 
-        {/* Result */}
-        {done && (
-          <div className="border-2 border-green-400 bg-green-50 rounded-xl p-5 text-center space-y-3">
-            <div className="text-3xl">🎉</div>
-            <h3 className="text-lg font-bold text-green-700">完成！</h3>
-            <div className="text-gray-700 space-y-1">
-              <p className="font-mono text-lg">
-                {problem.minuend}₂ − {problem.subtrahend}₂ ={" "}
-                <span className="text-green-700 font-bold">{correctAnswer}₂</span>
-              </p>
-              <p className="text-gray-500">
-                ({parseInt(problem.minuend, 2)} − {parseInt(problem.subtrahend, 2)} ={" "}
-                <span className="font-semibold text-green-700">{expectedDecimal}</span>)
-              </p>
-            </div>
-            <button
-              onClick={() => reset()}
-              className="px-6 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
-            >
-              次の問題 →
-            </button>
-          </div>
+      {/* Step 1 */}
+      <StepPanel number={1} title="① 減数(B)の1の補数を求める" active={isActive("ones")} complete={isComplete("ones")} status={statuses.ones}>
+        <Typography variant="body2" color="text.secondary" mb={1.5}>
+          <Box component="span" sx={{ fontFamily: "monospace", bgcolor: "background.paper", px: 0.5, borderRadius: 0.5, border: "1px solid #e0e0e0" }}>{problem.subtrahend}</Box>
+          {" "}の全ビットを反転させてください（0↔1）
+        </Typography>
+        {isComplete("ones") ? (
+          <BitRow value={correctOnes} color="green" />
+        ) : (
+          <Stack spacing={1.5} alignItems="center">
+            <BitInput bits={bits} value={inputs.ones} onChange={(v) => setInputs((s) => ({ ...s, ones: v }))}
+              disabled={!isActive("ones")} status={statuses.ones} onEnter={() => check("ones")} />
+            {statuses.ones === "wrong" && (
+              <Typography variant="caption" color="error">正解: <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>{correctOnes}</Box></Typography>
+            )}
+            <Stack direction="row" spacing={1}>
+              <Button variant="contained" size="small" disabled={!isActive("ones")} onClick={() => check("ones")}>確認</Button>
+              <Button variant="outlined" size="small" color="inherit" disabled={!isActive("ones")} onClick={() => reveal("ones")}>答えを見る</Button>
+            </Stack>
+          </Stack>
         )}
-      </div>
+      </StepPanel>
 
-      {/* Info box */}
-      <div className="bg-purple-50 rounded-xl p-4 text-sm text-purple-800 space-y-1">
-        <p className="font-semibold">なぜ引き算が加算でできるのか？</p>
-        <p>
-          N ビットで A − B を計算するとき、B の2の補数は 2^N − B です。
-          A + (2^N − B) = A − B + 2^N となり、最上位ビットへのキャリーが 2^N
-          に対応するため、それを捨てれば A − B が得られます。
-        </p>
-      </div>
-    </div>
+      {/* Step 2 */}
+      <StepPanel number={2} title="② 2の補数を求める（1の補数 + 1）" active={isActive("twos")} complete={isComplete("twos")} status={statuses.twos}>
+        <Typography variant="body2" color="text.secondary" mb={1.5}>
+          1の補数{" "}
+          <Box component="span" sx={{ fontFamily: "monospace", bgcolor: "background.paper", px: 0.5, borderRadius: 0.5, border: "1px solid #e0e0e0" }}>
+            {isComplete("ones") ? correctOnes : "???"}
+          </Box>
+          {" "}に1を加えてください
+        </Typography>
+        {isComplete("twos") ? (
+          <BitRow value={correctTwos} color="green" />
+        ) : (
+          <Stack spacing={1.5} alignItems="center">
+            <BitInput bits={bits} value={inputs.twos} onChange={(v) => setInputs((s) => ({ ...s, twos: v }))}
+              disabled={!isActive("twos")} status={statuses.twos} onEnter={() => check("twos")} />
+            {statuses.twos === "wrong" && (
+              <Typography variant="caption" color="error">正解: <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>{correctTwos}</Box></Typography>
+            )}
+            <Stack direction="row" spacing={1}>
+              <Button variant="contained" size="small" disabled={!isActive("twos")} onClick={() => check("twos")}>確認</Button>
+              <Button variant="outlined" size="small" color="inherit" disabled={!isActive("twos")} onClick={() => reveal("twos")}>答えを見る</Button>
+            </Stack>
+          </Stack>
+        )}
+      </StepPanel>
+
+      {/* Step 3 */}
+      <StepPanel number={3} title="③ A + 2の補数 を計算する" active={isActive("add")} complete={isComplete("add")} status={statuses.add}>
+        <Stack spacing={1} mb={1.5}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2" sx={{ width: 16, textAlign: "right" }}></Typography>
+            <BitRow value={problem.minuend} color="blue" />
+            <Typography variant="caption" color="text.secondary">({parseInt(problem.minuend, 2)})</Typography>
+          </Stack>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2" fontWeight={700} sx={{ width: 16, textAlign: "right" }}>+</Typography>
+            <BitRow value={isComplete("twos") ? correctTwos : "?".repeat(bits)} color={isComplete("twos") ? "green" : "default"} />
+            {isComplete("twos") && <Typography variant="caption" color="text.secondary">({parseInt(correctTwos, 2)})</Typography>}
+          </Stack>
+          <Divider />
+          {hasCarry && (
+            <Typography variant="caption" color="warning.main" textAlign="center">
+              ※ 最上位ビットからキャリー（桁上がり）が出ます → <strong>無視してください</strong>
+            </Typography>
+          )}
+        </Stack>
+        {isComplete("add") ? (
+          <Stack alignItems="center" spacing={1}>
+            {hasCarry && <Chip label="キャリー: 1 → 無視" size="small" color="warning" variant="outlined" />}
+            <BitRow value={correctAdd} color="green" />
+          </Stack>
+        ) : (
+          <Stack spacing={1.5} alignItems="center">
+            <Typography variant="caption" color="text.secondary">{bits}ビット分の結果を入力（キャリー除く）</Typography>
+            <BitInput bits={bits} value={inputs.add} onChange={(v) => setInputs((s) => ({ ...s, add: v }))}
+              disabled={!isActive("add")} status={statuses.add} onEnter={() => check("add")} />
+            {statuses.add === "wrong" && (
+              <Typography variant="caption" color="error">正解: <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700 }}>{correctAdd}</Box></Typography>
+            )}
+            <Stack direction="row" spacing={1}>
+              <Button variant="contained" size="small" disabled={!isActive("add")} onClick={() => check("add")}>確認</Button>
+              <Button variant="outlined" size="small" color="inherit" disabled={!isActive("add")} onClick={() => reveal("add")}>答えを見る</Button>
+            </Stack>
+          </Stack>
+        )}
+      </StepPanel>
+
+      {/* Done */}
+      {step === "done" && (
+        <Alert severity="success" icon={false} sx={{ textAlign: "center" }}>
+          <AlertTitle sx={{ fontSize: "1.2rem" }}>🎉 完成！</AlertTitle>
+          <Typography variant="h6" fontFamily="monospace">
+            {problem.minuend}₂ − {problem.subtrahend}₂ ={" "}
+            <Box component="span" color="success.dark" fontWeight={700}>{correctAdd}₂</Box>
+          </Typography>
+          <Typography color="text.secondary">
+            ({parseInt(problem.minuend, 2)} − {parseInt(problem.subtrahend, 2)} ={" "}
+            <Box component="span" fontWeight={700}>{expectedDec}</Box>)
+          </Typography>
+          <Box mt={2}>
+            <Button variant="contained" color="success" onClick={() => reset()}>次の問題 →</Button>
+          </Box>
+        </Alert>
+      )}
+
+      {/* Info */}
+      <Alert severity="info">
+        <AlertTitle>なぜ引き算が加算でできるのか？</AlertTitle>
+        <Typography variant="body2">
+          Nビットで A − B を計算するとき、Bの2の補数は 2ᴺ − B です。
+          A + (2ᴺ − B) = A − B + 2ᴺ となり、最上位ビットへのキャリーが 2ᴺ に対応するため、
+          それを捨てれば A − B が得られます。
+        </Typography>
+      </Alert>
+    </Stack>
   );
 }

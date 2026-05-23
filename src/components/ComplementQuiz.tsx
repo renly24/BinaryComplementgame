@@ -1,50 +1,80 @@
 "use client";
 import { useState, useCallback } from "react";
+import Box from "@mui/material/Box";
+import Button from "@mui/material/Button";
+import ButtonGroup from "@mui/material/ButtonGroup";
+import Card from "@mui/material/Card";
+import CardContent from "@mui/material/CardContent";
+import Chip from "@mui/material/Chip";
+import Collapse from "@mui/material/Collapse";
+import Alert from "@mui/material/Alert";
+import AlertTitle from "@mui/material/AlertTitle";
+import TextField from "@mui/material/TextField";
+import Typography from "@mui/material/Typography";
+import Stack from "@mui/material/Stack";
+import Divider from "@mui/material/Divider";
+import Paper from "@mui/material/Paper";
 
 type Difficulty = 4 | 8;
 type ComplementType = "ones" | "twos";
+type QuizState = "answering" | "correct" | "wrong";
 
 function randomBinary(bits: Difficulty): string {
   const max = (1 << bits) - 1;
-  const val = Math.floor(Math.random() * (max + 1));
-  return val.toString(2).padStart(bits, "0");
+  return Math.floor(Math.random() * (max + 1))
+    .toString(2)
+    .padStart(bits, "0");
 }
 
 function onesComplement(bin: string): string {
-  return bin
-    .split("")
-    .map((b) => (b === "0" ? "1" : "0"))
-    .join("");
+  return bin.split("").map((b) => (b === "0" ? "1" : "0")).join("");
 }
 
 function twosComplement(bin: string): string {
   const ones = onesComplement(bin);
   let carry = 1;
-  const result = ones
-    .split("")
-    .reverse()
-    .map((bit) => {
-      const sum = parseInt(bit) + carry;
-      carry = sum >> 1;
-      return (sum & 1).toString();
-    })
-    .reverse()
-    .join("");
-  return result.slice(-bin.length);
+  const arr = ones.split("").reverse().map((b) => {
+    const s = parseInt(b) + carry;
+    carry = s >> 1;
+    return (s & 1).toString();
+  });
+  return arr.reverse().join("").slice(-bin.length);
 }
 
-function binToDec(bin: string): number {
-  return parseInt(bin, 2);
+function BitCell({ value, color = "primary" }: { value: string; color?: "primary" | "warning" }) {
+  const colors = {
+    primary: { bg: "#e3f2fd", border: "#90caf9", text: "#1565c0" },
+    warning: { bg: "#fff8e1", border: "#ffe082", text: "#f57f17" },
+  };
+  const c = colors[color];
+  return (
+    <Box
+      sx={{
+        width: 44,
+        height: 52,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: c.bg,
+        border: `2px solid ${c.border}`,
+        borderRadius: 1.5,
+        fontFamily: "monospace",
+        fontSize: "1.4rem",
+        fontWeight: 700,
+        color: c.text,
+      }}
+    >
+      {value}
+    </Box>
+  );
 }
-
-type QuizState = "answering" | "correct" | "wrong";
 
 export default function ComplementQuiz() {
   const [bits, setBits] = useState<Difficulty>(4);
   const [complementType, setComplementType] = useState<ComplementType>("twos");
   const [current, setCurrent] = useState(() => randomBinary(4));
   const [input, setInput] = useState("");
-  const [state, setState] = useState<QuizState>("answering");
+  const [quizState, setQuizState] = useState<QuizState>("answering");
   const [score, setScore] = useState(0);
   const [total, setTotal] = useState(0);
   const [showHint, setShowHint] = useState(false);
@@ -55,14 +85,14 @@ export default function ComplementQuiz() {
   const next = useCallback(() => {
     setCurrent(randomBinary(bits));
     setInput("");
-    setState("answering");
+    setQuizState("answering");
     setShowHint(false);
   }, [bits]);
 
   const check = () => {
     const normalized = input.padStart(bits, "0");
     const isCorrect = normalized === correct;
-    setState(isCorrect ? "correct" : "wrong");
+    setQuizState(isCorrect ? "correct" : "wrong");
     setTotal((t) => t + 1);
     if (isCorrect) setScore((s) => s + 1);
   };
@@ -71,210 +101,199 @@ export default function ComplementQuiz() {
     setBits(b);
     setCurrent(randomBinary(b));
     setInput("");
-    setState("answering");
+    setQuizState("answering");
     setShowHint(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && state === "answering" && input.length > 0) check();
-    if (e.key === "Enter" && state !== "answering") next();
+    if (e.key === "Enter") {
+      if (quizState === "answering" && input.length > 0) check();
+      else if (quizState !== "answering") next();
+    }
   };
 
   return (
-    <div className="space-y-6">
+    <Stack spacing={3}>
       {/* Settings bar */}
-      <div className="flex flex-wrap gap-4 items-center justify-between bg-gray-50 rounded-xl p-4">
-        <div className="flex gap-2 items-center">
-          <span className="text-sm font-medium text-gray-600">ビット数:</span>
-          {([4, 8] as Difficulty[]).map((b) => (
-            <button
-              key={b}
-              onClick={() => changeBits(b)}
-              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                bits === b
-                  ? "bg-blue-600 text-white"
-                  : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              {b}ビット
-            </button>
-          ))}
-        </div>
-        <div className="flex gap-2 items-center">
-          <span className="text-sm font-medium text-gray-600">補数の種類:</span>
-          {(["ones", "twos"] as ComplementType[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => {
-                setComplementType(t);
-                setInput("");
-                setState("answering");
-              }}
-              className={`px-3 py-1 rounded-lg text-sm font-medium transition-colors ${
-                complementType === t
-                  ? "bg-purple-600 text-white"
-                  : "bg-white border border-gray-300 text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              {t === "ones" ? "1の補数" : "2の補数"}
-            </button>
-          ))}
-        </div>
-        <div className="text-sm font-semibold text-gray-700">
-          スコア: <span className="text-blue-600">{score}</span> / {total}
-        </div>
-      </div>
+      <Paper variant="outlined" sx={{ p: 2 }}>
+        <Stack direction={{ xs: "column", sm: "row" }} spacing={2} alignItems={{ sm: "center" }} justifyContent="space-between">
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2" color="text.secondary" fontWeight={500}>ビット数:</Typography>
+            <ButtonGroup size="small" variant="outlined">
+              {([4, 8] as Difficulty[]).map((b) => (
+                <Button
+                  key={b}
+                  onClick={() => changeBits(b)}
+                  variant={bits === b ? "contained" : "outlined"}
+                >
+                  {b}ビット
+                </Button>
+              ))}
+            </ButtonGroup>
+          </Stack>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Typography variant="body2" color="text.secondary" fontWeight={500}>補数:</Typography>
+            <ButtonGroup size="small" variant="outlined" color="secondary">
+              {(["ones", "twos"] as ComplementType[]).map((t) => (
+                <Button
+                  key={t}
+                  onClick={() => { setComplementType(t); setInput(""); setQuizState("answering"); }}
+                  variant={complementType === t ? "contained" : "outlined"}
+                >
+                  {t === "ones" ? "1の補数" : "2の補数"}
+                </Button>
+              ))}
+            </ButtonGroup>
+          </Stack>
+          <Chip
+            label={`スコア: ${score} / ${total}`}
+            color="primary"
+            variant="outlined"
+            sx={{ fontWeight: 700 }}
+          />
+        </Stack>
+      </Paper>
 
       {/* Problem card */}
-      <div className="bg-white rounded-2xl border-2 border-gray-200 p-8 space-y-6 text-center">
-        <p className="text-gray-500 text-sm font-medium">
-          次の{bits}ビット2進数の<span className="text-purple-600 font-bold">{complementType === "ones" ? "1の補数" : "2の補数"}</span>を求めてください
-        </p>
+      <Card variant="outlined" sx={{ borderWidth: 2 }}>
+        <CardContent sx={{ textAlign: "center", py: 4 }}>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            次の{bits}ビット2進数の
+            <Typography component="span" color="secondary.main" fontWeight={700}>
+              {" "}{complementType === "ones" ? "1の補数" : "2の補数"}
+            </Typography>
+            を求めてください
+          </Typography>
 
-        {/* Binary number display */}
-        <div className="flex justify-center gap-2">
-          {current.split("").map((bit, i) => (
-            <div
-              key={i}
-              className="w-12 h-14 flex items-center justify-center bg-blue-50 border-2 border-blue-200 rounded-lg text-2xl font-mono font-bold text-blue-700"
-            >
-              {bit}
-            </div>
-          ))}
-        </div>
+          {/* Binary display */}
+          <Stack direction="row" spacing={0.75} justifyContent="center" my={3}>
+            {current.split("").map((bit, i) => (
+              <BitCell key={i} value={bit} />
+            ))}
+          </Stack>
 
-        <p className="text-gray-400 text-sm">
-          (10進数: <span className="text-gray-700 font-semibold">{binToDec(current)}</span>)
-        </p>
+          <Typography variant="caption" color="text.secondary">
+            (10進数:{" "}
+            <Typography component="span" variant="caption" fontWeight={700} color="text.primary">
+              {parseInt(current, 2)}
+            </Typography>
+            )
+          </Typography>
 
-        {/* Answer input */}
-        {state === "answering" && (
-          <div className="space-y-4">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => {
-                const v = e.target.value.replace(/[^01]/g, "").slice(0, bits);
-                setInput(v);
-              }}
-              onKeyDown={handleKeyDown}
-              placeholder={`${bits}ビットの2進数を入力`}
-              className="w-full max-w-xs mx-auto block text-center font-mono text-xl border-2 border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500"
-              autoFocus
-            />
-            <div className="flex justify-center gap-3">
-              <button
-                onClick={check}
-                disabled={input.length === 0}
-                className="px-6 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                答え合わせ
-              </button>
-              <button
-                onClick={() => setShowHint(!showHint)}
-                className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl font-medium hover:bg-gray-200 transition-colors"
-              >
-                {showHint ? "ヒントを隠す" : "ヒントを見る"}
-              </button>
-            </div>
+          <Divider sx={{ my: 3 }} />
 
-            {showHint && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-sm text-left max-w-sm mx-auto">
-                {complementType === "ones" ? (
-                  <>
-                    <p className="font-semibold text-yellow-800 mb-1">1の補数の求め方:</p>
-                    <p className="text-yellow-700">各ビットを反転させます（0→1, 1→0）</p>
-                    <p className="font-mono text-yellow-900 mt-2">
-                      {current} → {current.split("").map((b) => (b === "0" ? "?" : "?")).join("")}
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-semibold text-yellow-800 mb-1">2の補数の求め方:</p>
-                    <ol className="text-yellow-700 list-decimal list-inside space-y-1">
-                      <li>全ビットを反転（1の補数を求める）</li>
-                      <li>結果に1を加える</li>
-                    </ol>
-                    <p className="font-mono text-yellow-900 mt-2">
-                      {current} → 反転 → +1 = ?
-                    </p>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+          {/* Input area */}
+          {quizState === "answering" && (
+            <Stack spacing={2} alignItems="center">
+              <TextField
+                value={input}
+                onChange={(e) => setInput(e.target.value.replace(/[^01]/g, "").slice(0, bits))}
+                onKeyDown={handleKeyDown}
+                placeholder={`${bits}ビットの2進数を入力 (0と1のみ)`}
+                inputProps={{ style: { textAlign: "center", fontFamily: "monospace", fontSize: "1.2rem", letterSpacing: "0.2em" } }}
+                sx={{ maxWidth: 300 }}
+                autoFocus
+                fullWidth
+              />
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="contained"
+                  onClick={check}
+                  disabled={input.length === 0}
+                  size="large"
+                >
+                  答え合わせ
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => setShowHint(!showHint)}
+                >
+                  {showHint ? "ヒントを隠す" : "ヒントを見る"}
+                </Button>
+              </Stack>
 
-        {/* Result */}
-        {state !== "answering" && (
-          <div className="space-y-4">
-            <div
-              className={`rounded-xl p-4 ${
-                state === "correct"
-                  ? "bg-green-50 border-2 border-green-300"
-                  : "bg-red-50 border-2 border-red-300"
-              }`}
-            >
-              <p
-                className={`text-lg font-bold ${
-                  state === "correct" ? "text-green-700" : "text-red-700"
-                }`}
-              >
-                {state === "correct" ? "✓ 正解！" : "✗ 不正解"}
-              </p>
-              {state === "wrong" && (
-                <div className="mt-2 space-y-1 text-sm text-gray-700">
-                  <p>
-                    あなたの答え:{" "}
-                    <span className="font-mono font-bold text-red-600">
-                      {input.padStart(bits, "0")}
-                    </span>
-                  </p>
-                  <p>
-                    正解:{" "}
-                    <span className="font-mono font-bold text-green-600">{correct}</span>
-                    {" "}(10進数: {binToDec(correct)})
-                  </p>
-                  {complementType === "twos" && (
-                    <div className="mt-3 text-xs text-gray-500 bg-white rounded-lg p-3 space-y-1">
-                      <p className="font-semibold text-gray-600">解説:</p>
-                      <p>
-                        {current} の1の補数:{" "}
-                        <span className="font-mono text-purple-600">{onesComplement(current)}</span>
-                      </p>
-                      <p>
-                        +1 ={" "}
-                        <span className="font-mono text-green-600">{correct}</span>
-                      </p>
-                    </div>
+              <Collapse in={showHint}>
+                <Alert severity="warning" sx={{ textAlign: "left", maxWidth: 360 }}>
+                  <AlertTitle>
+                    {complementType === "ones" ? "1の補数の求め方" : "2の補数の求め方"}
+                  </AlertTitle>
+                  {complementType === "ones" ? (
+                    <Typography variant="body2">
+                      各ビットを反転させます（0→1, 1→0）
+                    </Typography>
+                  ) : (
+                    <Box component="ol" sx={{ pl: 2, m: 0 }}>
+                      <li><Typography variant="body2">全ビットを反転（1の補数を求める）</Typography></li>
+                      <li><Typography variant="body2">結果に1を加える</Typography></li>
+                    </Box>
                   )}
-                </div>
-              )}
-            </div>
-            <button
-              onClick={next}
-              className="px-6 py-2 bg-blue-600 text-white rounded-xl font-medium hover:bg-blue-700 transition-colors"
-            >
-              次の問題 →
-            </button>
-          </div>
-        )}
-      </div>
+                </Alert>
+              </Collapse>
+            </Stack>
+          )}
 
-      {/* How it works */}
-      <div className="bg-blue-50 rounded-xl p-4 text-sm text-blue-800 space-y-2">
-        <p className="font-semibold">
-          {complementType === "ones" ? "1の補数とは" : "2の補数とは"}
-        </p>
-        {complementType === "ones" ? (
-          <p>全ビットを反転したもの。元の数と足すと全ビットが1になります。</p>
-        ) : (
-          <p>
-            1の補数に1を加えたもの。コンピュータで負の数を表現するために使われます。
-            元の数と足すと桁溢れ（キャリー）が発生し、結果は0になります。
-          </p>
-        )}
-      </div>
-    </div>
+          {/* Result */}
+          {quizState !== "answering" && (
+            <Stack spacing={2} alignItems="center">
+              <Alert
+                severity={quizState === "correct" ? "success" : "error"}
+                sx={{ width: "100%", maxWidth: 400, textAlign: "left" }}
+              >
+                <AlertTitle>{quizState === "correct" ? "✓ 正解！" : "✗ 不正解"}</AlertTitle>
+                {quizState === "wrong" && (
+                  <Stack spacing={1}>
+                    <Typography variant="body2">
+                      あなたの答え:{" "}
+                      <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700, color: "error.main" }}>
+                        {input.padStart(bits, "0")}
+                      </Box>
+                    </Typography>
+                    <Typography variant="body2">
+                      正解:{" "}
+                      <Box component="span" sx={{ fontFamily: "monospace", fontWeight: 700, color: "success.main" }}>
+                        {correct}
+                      </Box>
+                      {" "}(= {parseInt(correct, 2)})
+                    </Typography>
+                    {complementType === "twos" && (
+                      <Box sx={{ mt: 1, p: 1.5, bgcolor: "background.default", borderRadius: 1 }}>
+                        <Typography variant="caption" color="text.secondary" display="block" fontWeight={700} mb={0.5}>
+                          解説:
+                        </Typography>
+                        <Typography variant="caption" display="block" fontFamily="monospace">
+                          {current} の1の補数:{" "}
+                          <Box component="span" color="secondary.main" fontWeight={700}>
+                            {onesComplement(current)}
+                          </Box>
+                        </Typography>
+                        <Typography variant="caption" display="block" fontFamily="monospace">
+                          +1 ={" "}
+                          <Box component="span" color="success.main" fontWeight={700}>
+                            {correct}
+                          </Box>
+                        </Typography>
+                      </Box>
+                    )}
+                  </Stack>
+                )}
+              </Alert>
+              <Button variant="contained" onClick={next} size="large">
+                次の問題 →
+              </Button>
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Info */}
+      <Alert severity="info">
+        <AlertTitle>{complementType === "ones" ? "1の補数とは" : "2の補数とは"}</AlertTitle>
+        <Typography variant="body2">
+          {complementType === "ones"
+            ? "全ビットを反転したもの。元の数と足すと全ビットが1になります。"
+            : "1の補数に1を加えたもの。コンピュータで負の数を表現するために使われます。元の数と足すとキャリーが発生し、結果は0になります。"}
+        </Typography>
+      </Alert>
+    </Stack>
   );
 }
