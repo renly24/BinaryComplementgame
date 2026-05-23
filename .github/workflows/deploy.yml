@@ -11,7 +11,6 @@ permissions:
   contents: read
   pages: write
   id-token: write
-  administration: write
 
 concurrency:
   group: "pages"
@@ -27,11 +26,6 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Install dependencies
         run: npm ci
