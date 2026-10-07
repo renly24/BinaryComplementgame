@@ -46,7 +46,7 @@ const PART_STYLE: Record<PartKind, { label: string; color: string }> = {
 
 const HOST = {
   client: { name: "スマホ（SNSアプリ）", short: "スマホ", icon: "📱", ip: "192.168.1.10", mac: "AA:AA:AA:11:11:11", port: 50000 },
-  server: { name: "SNSサーバ", short: "SNSサーバ", icon: "🖥️", ip: "192.168.1.20", mac: "BB:BB:BB:22:22:22", port: 80 },
+  server: { name: "Webサーバ（SNS）", short: "Webサーバ", icon: "🖥️", ip: "192.168.1.20", mac: "BB:BB:BB:22:22:22", port: 80 },
 } as const;
 
 const MSS = 1460;
@@ -125,7 +125,7 @@ function buildSteps(): Step[] {
       where: { side: "client", layer: "transport" },
       title: "それぞれにTCPヘッダを付ける",
       description:
-        "切り分けたそれぞれに TCP ヘッダを付けます。TCP ヘッダの“あて先”はポート番号で、送信元はアプリのポート（50000）、宛先は SNS サーバの Web サービスのポート（80）です。さらにシーケンス番号（画像の何バイト目からか）を書いておくので、受け取った側は元の順番に並べ直せます。",
+        "切り分けたそれぞれに TCP ヘッダを付けます。TCP ヘッダの“あて先”はポート番号で、送信元はアプリのポート（50000）、宛先は Web サーバの Web サービスのポート（80）です。さらにシーケンス番号（画像の何バイト目からか）を書いておくので、受け取った側は元の順番に並べ直せます。",
       units: withParts(split, HEADERS_TCP),
       focus: "tcp",
     },
@@ -200,7 +200,7 @@ function buildSteps(): Step[] {
       phase: "request",
       where: { side: "server", layer: "app" },
       title: "画像を受け取って保存",
-      description: "SNS サーバが HTTP リクエスト（POST /upload）と画像を受け取り、保存しました。次は「投稿できました」という返事（レスポンス）を送ります。",
+      description: "Web サーバが HTTP リクエスト（POST /upload）と画像を受け取り、保存しました。次は「投稿できました」という返事（レスポンス）を送ります。",
       units: image,
       focus: "data",
     },
@@ -210,7 +210,7 @@ function buildSteps(): Step[] {
       phase: "response",
       where: { side: "server", layer: "app" },
       title: "「投稿完了」の返事を作る",
-      description: `SNS サーバは「201 Created（投稿できました）」という HTTP レスポンスを作ります。大きさは ${RESPONSE_BYTES} バイトです。`,
+      description: `Web サーバは「201 Created（投稿できました）」という HTTP レスポンスを作ります。大きさは ${RESPONSE_BYTES} バイトです。`,
       units: reply,
       focus: "data",
     },
@@ -358,7 +358,7 @@ function PhotoView({ step }: { step: Step }) {
   const pieces = step.units.filter((u) => u.no !== null);
   const done = step.phase === "response";
   const caption = done
-    ? "SNSサーバに保存された画像"
+    ? "Webサーバに保存された画像"
     : pieces.length === 0
       ? step.where !== "wire" && step.where.side === "server"
         ? "元どおりにつながった画像"
@@ -440,9 +440,48 @@ function LayerStack({ side, step }: { side: Side; step: Step }) {
       <Typography textAlign="center" fontWeight={700} mb={0.5} sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}>
         {host.icon} {host.name}
       </Typography>
-      <Typography textAlign="center" variant="caption" color="text.secondary" display="block" mb={1}>
+      <Typography textAlign="center" variant="caption" color="text.secondary" display="block" mb={0.75}>
         {sending ? "送信 ⬇ ヘッダを付ける" : "受信 ⬆ ヘッダを外す"}
       </Typography>
+      <Box
+        sx={{
+          mb: 1,
+          px: 1,
+          py: 0.5,
+          borderRadius: 1.5,
+          bgcolor: "grey.50",
+          border: 1,
+          borderColor: "divider",
+        }}
+      >
+        {(
+          [
+            ["transport", "ポート", String(host.port)],
+            ["internet", "IP", host.ip],
+            ["link", "MAC", host.mac],
+          ] as [Layer, string, string][]
+        ).map(([layer, label, value]) => {
+          const color = LAYER_BY_ID[layer].color;
+          const lit = active === layer;
+          return (
+            <Stack
+              key={layer}
+              direction={{ xs: "column", sm: "row" }}
+              justifyContent="space-between"
+              alignItems={{ xs: "flex-start", sm: "center" }}
+              columnGap={0.5}
+              sx={{ borderRadius: 1, px: 0.5, bgcolor: lit ? color : "transparent", color: lit ? "#fff" : "text.primary", transition: "all 0.3s" }}
+            >
+              <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.72rem" }, fontWeight: 700, color: lit ? "#fff" : color }}>
+                {label}
+              </Typography>
+              <Typography sx={{ fontSize: { xs: "0.62rem", sm: "0.75rem" }, fontWeight: 600, fontFamily: "monospace", whiteSpace: "nowrap" }}>
+                {value}
+              </Typography>
+            </Stack>
+          );
+        })}
+      </Box>
       <Stack spacing={0.75}>
         {LAYERS.map((layer) => {
           const isActive = active === layer.id;
@@ -652,13 +691,13 @@ export default function NetworkSimulator() {
             <Stack direction="row" spacing={1} mb={2} justifyContent="center" flexWrap="wrap" useFlexGap>
               <Chip
                 size="small"
-                label="① 画像をアップロード：スマホ → サーバ"
+                label="① 画像をアップロード：スマホ → Webサーバ"
                 color={step.phase === "request" ? "primary" : "default"}
                 variant={step.phase === "request" ? "filled" : "outlined"}
               />
               <Chip
                 size="small"
-                label="② 返事：サーバ → スマホ"
+                label="② 返事：Webサーバ → スマホ"
                 color={step.phase === "response" ? "secondary" : "default"}
                 variant={step.phase === "response" ? "filled" : "outlined"}
               />
