@@ -72,6 +72,8 @@ interface Step {
   /** 詳細表で強調するヘッダ */
   focus?: PartKind;
   checks?: string[];
+  /** 受信側で「ヘッダに書かれた宛先」と「自分のアドレス」を見比べる */
+  compare?: { label: string; header: string; mine: string; result: string };
   /** ケーブル上での到着順（セグメント番号。0 は分割なし） */
   arrival?: number[];
 }
@@ -163,7 +165,8 @@ function buildSteps(): Step[] {
         "受け取ったら、下の層から順に「自分あてか」を確認してヘッダを外していきます。まずフレームごとに宛先 MAC アドレスと FCS を確認します。",
       units: withParts(arrived, HEADERS_ALL, true),
       focus: "eth",
-      checks: [`宛先MAC ${s.mac} ＝ 自分の MAC アドレス → 受け取る`, "FCS で誤りなし → イーサネットヘッダと FCS を外す"],
+      compare: { label: "MACアドレス", header: s.mac, mine: s.mac, result: "自分あてなので受け取る" },
+      checks: ["FCS で誤りなし → イーサネットヘッダと FCS を外す"],
     },
     {
       phase: "request",
@@ -172,7 +175,7 @@ function buildSteps(): Step[] {
       description: "IP ヘッダの宛先 IP アドレスが自分のものかを確認し、IP ヘッダを外します。",
       units: withParts(arrived, HEADERS_IP, true),
       focus: "ip",
-      checks: [`宛先IP ${s.ip} ＝ 自分の IP アドレス → IPヘッダを外す`],
+      compare: { label: "IPアドレス", header: s.ip, mine: s.ip, result: "自分あてなので IPヘッダを外す" },
     },
     {
       phase: "request",
@@ -182,8 +185,8 @@ function buildSteps(): Step[] {
         "TCP ヘッダの宛先ポート番号を見て、どのアプリケーションに渡すかを決めます。さらにシーケンス番号を見て、届いた順（①③②）ではなく元の順番（①②③）に画像の切れ端を並べ替えます。",
       units: withParts(split, HEADERS_TCP, true),
       focus: "tcp",
+      compare: { label: "ポート番号", header: String(s.port), mine: `${s.port}（Webサービス）`, result: "Webサービスに渡すデータ" },
       checks: [
-        `宛先ポート ${s.port} → SNSの Web サービスに渡すデータ`,
         `シーケンス番号 ${split.map((u) => u.seq).join(" → ")} の順に並べ替え`,
         "受け取った分は確認応答（ACK）でスマホに知らせる",
       ],
@@ -253,7 +256,7 @@ function buildSteps(): Step[] {
       description: "スマホは宛先 MAC アドレスと FCS を確認して、イーサネットヘッダを外します。",
       units: withParts(reply, HEADERS_ALL, true),
       focus: "eth",
-      checks: [`宛先MAC ${c.mac} ＝ 自分の MAC アドレス → 受け取る`],
+      compare: { label: "MACアドレス", header: c.mac, mine: c.mac, result: "自分あてなので受け取る" },
     },
     {
       phase: "response",
@@ -262,7 +265,7 @@ function buildSteps(): Step[] {
       description: "IP ヘッダの宛先 IP アドレスを確認して、IP ヘッダを外します。",
       units: withParts(reply, HEADERS_IP, true),
       focus: "ip",
-      checks: [`宛先IP ${c.ip} ＝ 自分の IP アドレス → IPヘッダを外す`],
+      compare: { label: "IPアドレス", header: c.ip, mine: c.ip, result: "自分あてなので IPヘッダを外す" },
     },
     {
       phase: "response",
@@ -271,7 +274,7 @@ function buildSteps(): Step[] {
       description: "宛先ポート番号 50000 を見て、この返事を SNS アプリに渡します。",
       units: withParts(reply, HEADERS_TCP, true),
       focus: "tcp",
-      checks: [`宛先ポート ${c.port} → SNSアプリに渡す`],
+      compare: { label: "ポート番号", header: String(c.port), mine: `${c.port}（SNSアプリ）`, result: "SNSアプリに渡す" },
     },
     {
       phase: "response",
@@ -449,11 +452,13 @@ function LayerStack({ side, step }: { side: Side; step: Step }) {
           px: 1,
           py: 0.5,
           borderRadius: 1.5,
-          bgcolor: "grey.50",
-          border: 1,
-          borderColor: "divider",
+          bgcolor: "#eceff1",
+          border: "2px solid #90a4ae",
         }}
       >
+        <Typography sx={{ fontSize: { xs: "0.62rem", sm: "0.72rem" }, fontWeight: 700, color: "#455a64", mb: 0.25 }}>
+          🪪 自分のアドレス
+        </Typography>
         {(
           [
             ["transport", "ポート", String(host.port)],
@@ -470,10 +475,21 @@ function LayerStack({ side, step }: { side: Side; step: Step }) {
               justifyContent="space-between"
               alignItems={{ xs: "flex-start", sm: "center" }}
               columnGap={0.5}
-              sx={{ borderRadius: 1, px: 0.5, bgcolor: lit ? color : "transparent", color: lit ? "#fff" : "text.primary", transition: "all 0.3s" }}
+              sx={{
+                borderRadius: 1,
+                px: 0.5,
+                bgcolor: lit ? "#fff59d" : "transparent",
+                outline: lit ? `2px solid ${color}` : "none",
+                transition: "all 0.3s",
+              }}
             >
-              <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.72rem" }, fontWeight: 700, color: lit ? "#fff" : color }}>
+              <Typography sx={{ fontSize: { xs: "0.6rem", sm: "0.72rem" }, fontWeight: 700, color }}>
                 {label}
+                {lit && (
+                  <Box component="span" sx={{ ml: 0.5, color: "text.secondary", fontWeight: 600 }}>
+                    {sending ? "→ ヘッダに記入" : "← ヘッダと照合"}
+                  </Box>
+                )}
               </Typography>
               <Typography sx={{ fontSize: { xs: "0.62rem", sm: "0.75rem" }, fontWeight: 600, fontFamily: "monospace", whiteSpace: "nowrap" }}>
                 {value}
@@ -643,6 +659,36 @@ function UnitBar({ unit, phase, selected, onSelect }: { unit: Unit; phase: Phase
   );
 }
 
+function CompareBox({ compare }: { compare: NonNullable<Step["compare"]> }) {
+  const box = (icon: string, title: string, value: string, bg: string, border: string) => (
+    <Box sx={{ flex: 1, minWidth: 0, p: 1, borderRadius: 1.5, bgcolor: bg, border }}>
+      <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: "text.secondary" }}>
+        {icon} {title}
+      </Typography>
+      <Typography sx={{ fontFamily: "monospace", fontWeight: 700, fontSize: { xs: "0.8rem", sm: "0.9rem" }, overflowWrap: "anywhere" }}>
+        {value}
+      </Typography>
+    </Box>
+  );
+  return (
+    <Paper variant="outlined" sx={{ mt: 1.5, p: 1.25, borderColor: "success.main" }}>
+      <Stack direction="row" spacing={1} alignItems="center">
+        {box("✉️", `ヘッダに書かれた宛先${compare.label}`, compare.header, "#fff", "2px solid #bdbdbd")}
+        <Typography fontWeight={700} fontSize="1.4rem" color="success.main">
+          ＝
+        </Typography>
+        {box("🪪", `自分の${compare.label}`, compare.mine, "#eceff1", "2px solid #90a4ae")}
+      </Stack>
+      <Stack direction="row" spacing={1} alignItems="center" mt={1}>
+        <CheckCircleIcon color="success" fontSize="small" />
+        <Typography variant="body2" fontWeight={700}>
+          一致 → {compare.result}
+        </Typography>
+      </Stack>
+    </Paper>
+  );
+}
+
 // ---------- 本体 ----------
 
 export default function NetworkSimulator() {
@@ -722,6 +768,7 @@ export default function NetworkSimulator() {
             <Typography variant="body2" sx={{ lineHeight: 1.8, fontSize: "0.95rem" }}>
               {step.description}
             </Typography>
+            {step.compare && <CompareBox compare={step.compare} />}
             {step.checks && (
               <Paper variant="outlined" sx={{ mt: 1.5, p: 1.25, borderColor: "success.main", bgcolor: "#f1f8e9" }}>
                 {step.checks.map((c) => (
@@ -810,6 +857,12 @@ export default function NetworkSimulator() {
             </Box>
 
             <Stack spacing={1.25}>
+              <Box>
+                <Typography fontWeight={700}>✉️ ヘッダに書かれている内容</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  選んだデータに付いているヘッダです（上の「🪪 自分のアドレス」とは別のものです）
+                </Typography>
+              </Box>
               {detailKinds.map((kind) => {
                 const focused = step.focus === kind;
                 const color = PART_STYLE[kind].color;
