@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import Tab from "@mui/material/Tab";
@@ -23,6 +24,9 @@ export default function Home() {
           </Typography>
           <Typography variant="body2" color="text.secondary">
             2進数の補数と、補数を使った引き算を学ぼう
+          </Typography>
+          <Typography variant="body2" mt={1}>
+            <Link href="/network">🌐 ブラウザとWebサーバの通信シミュレータへ →</Link>
           </Typography>
         </Box>
 
