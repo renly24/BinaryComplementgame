@@ -25,7 +25,7 @@ type Phase = "request" | "response";
 type PartKind = "eth" | "ip" | "tcp" | "data" | "fcs";
 
 const LAYERS: { id: Layer; name: string; osi: string; protocol: string; color: string }[] = [
-  { id: "app", name: "アプリケーション層", osi: "OSI 第5〜7層", protocol: "HTTP", color: "#1e88e5" },
+  { id: "app", name: "アプリケーション層", osi: "OSI 第5〜7層", protocol: "HTTPS", color: "#1e88e5" },
   { id: "transport", name: "トランスポート層", osi: "OSI 第4層", protocol: "TCP", color: "#43a047" },
   { id: "internet", name: "インターネット層", osi: "OSI 第3層", protocol: "IP", color: "#fb8c00" },
   { id: "link", name: "ネットワークインタフェース層", osi: "OSI 第1〜2層", protocol: "イーサネット", color: "#8e24aa" },
@@ -45,8 +45,8 @@ const PART_STYLE: Record<PartKind, { label: string; color: string }> = {
 };
 
 const HOST = {
-  client: { name: "スマホ（SNSアプリ）", short: "スマホ", icon: "📱", ip: "192.168.1.10", mac: "AA:AA:AA:11:11:11", port: 50000 },
-  server: { name: "SNSサーバ", short: "SNSサーバ", icon: "🖥️", ip: "192.168.1.20", mac: "BB:BB:BB:22:22:22", port: 80 },
+  client: { name: "Webブラウザ", note: "SNSで画像をアップロードする", ip: "192.168.1.10", mac: "AA:AA:AA:11:11:11", port: 50000 },
+  server: { name: "Webサーバ", note: "SNSの画像を保存・表示する", ip: "192.168.1.20", mac: "BB:BB:BB:22:22:22", port: 443 },
 } as const;
 
 const MSS = 1460;
@@ -96,19 +96,19 @@ function withParts(units: Unit[], parts: PartKind[], checked = false): Unit[] {
 function buildSteps(): Step[] {
   const image: Unit[] = [{ no: null, parts: DATA_ONLY, bytes: IMAGE_BYTES, seq: 1 }];
   const split: Unit[] = segments(IMAGE_BYTES).map((s, i) => ({ no: i + 1, parts: DATA_ONLY, ...s }));
-  const arrival = [1, 3, 2];
+  const arrival = [3, 1, 2];
   const arrived = arrival.map((no) => split[no - 1]);
   const reply: Unit[] = [{ no: null, parts: DATA_ONLY, bytes: RESPONSE_BYTES, seq: 1 }];
   const s = HOST.server;
   const c = HOST.client;
 
   return [
-    // ---- 画像のアップロード（スマホ → SNSサーバ） ----
+    // ---- 画像のアップロード（ブラウザ → サーバ） ----
     {
       phase: "request",
       where: { side: "client", layer: "app" },
       title: "画像を投稿する",
-      description: `SNSアプリで写真を選んで「投稿」を押すと、アプリケーション層の HTTP が「この画像を保存してください」というリクエスト（POST /upload ＋ 画像データ）を作ります。画像の大きさは ${IMAGE_BYTES.toLocaleString()} バイトです（説明のため、とても小さな画像にしています）。`,
+      description: `SNS の画面で写真を選んで「投稿」を押すと、アプリケーション層の HTTPS（暗号化された HTTP）が「この画像を保存してください」というリクエスト（POST /upload ＋ 画像データ）を作ります。画像の大きさは ${IMAGE_BYTES.toLocaleString()} バイトです（説明のため、とても小さな画像にしています）。`,
       units: image,
       focus: "data",
     },
@@ -125,7 +125,7 @@ function buildSteps(): Step[] {
       where: { side: "client", layer: "transport" },
       title: "それぞれにTCPヘッダを付ける",
       description:
-        "切り分けたそれぞれに TCP ヘッダを付けます。TCP ヘッダの“あて先”はポート番号で、送信元はアプリのポート（50000）、宛先は SNS サーバの Web サービスのポート（80）です。さらにシーケンス番号（画像の何バイト目からか）を書いておくので、受け取った側は元の順番に並べ直せます。",
+        "切り分けたそれぞれに TCP ヘッダを付けます。TCP ヘッダの“あて先”はポート番号で、送信元はブラウザのポート（50000）、宛先は Web サーバの HTTPS のポート（443）です。さらにシーケンス番号（画像の何バイト目からか）を書いておくので、受け取った側は元の順番に並べ直せます。",
       units: withParts(split, HEADERS_TCP),
       focus: "tcp",
     },
@@ -151,7 +151,7 @@ function buildSteps(): Step[] {
       where: "wire",
       title: "ネットワークを流れる（順番が入れ替わることも）",
       description:
-        "パケットは別々の経路を通ることがあるので、送った順番どおりに届くとは限りません。ここでは ①→③→② の順に届きました。画像の切れ端がバラバラの順番で届いた状態です。",
+        "パケットは別々の経路を通ることがあるので、送った順番どおりに届くとは限りません。ここでは ③→①→② の順に届きました。画像の切れ端がバラバラの順番で届いた状態です。",
       units: withParts(arrived, HEADERS_ALL),
       arrival,
     },
@@ -179,13 +179,13 @@ function buildSteps(): Step[] {
       where: { side: "server", layer: "transport" },
       title: "TCPヘッダを確認して並べ替える",
       description:
-        "TCP ヘッダの宛先ポート番号を見て、どのアプリケーションに渡すかを決めます。さらにシーケンス番号を見て、届いた順（①③②）ではなく元の順番（①②③）に画像の切れ端を並べ替えます。",
+        "TCP ヘッダの宛先ポート番号を見て、どのアプリケーションに渡すかを決めます。さらにシーケンス番号を見て、届いた順（③①②）ではなく元の順番（①②③）に画像の切れ端を並べ替えます。",
       units: withParts(split, HEADERS_TCP, true),
       focus: "tcp",
       checks: [
-        `宛先ポート ${s.port} → SNSの Web サービスに渡すデータ`,
+        `宛先ポート ${s.port} → HTTPS の Web サービスに渡すデータ`,
         `シーケンス番号 ${split.map((u) => u.seq).join(" → ")} の順に並べ替え`,
-        "受け取った分は確認応答（ACK）でスマホに知らせる",
+        "受け取った分は確認応答（ACK）でブラウザに知らせる",
       ],
     },
     {
@@ -200,17 +200,17 @@ function buildSteps(): Step[] {
       phase: "request",
       where: { side: "server", layer: "app" },
       title: "画像を受け取って保存",
-      description: "SNS サーバが HTTP リクエスト（POST /upload）と画像を受け取り、保存しました。次は「投稿できました」という返事（レスポンス）を送ります。",
+      description: "Web サーバが HTTPS のリクエスト（POST /upload）と画像を受け取り、保存しました。次は「投稿できました」という返事（レスポンス）を送ります。",
       units: image,
       focus: "data",
     },
 
-    // ---- 返事（SNSサーバ → スマホ） ----
+    // ---- 返事（サーバ → ブラウザ） ----
     {
       phase: "response",
       where: { side: "server", layer: "app" },
       title: "「投稿完了」の返事を作る",
-      description: `SNS サーバは「201 Created（投稿できました）」という HTTP レスポンスを作ります。大きさは ${RESPONSE_BYTES} バイトです。`,
+      description: `Web サーバは「201 Created（投稿できました）」という HTTPS のレスポンスを作ります。大きさは ${RESPONSE_BYTES} バイトです。`,
       units: reply,
       focus: "data",
     },
@@ -218,7 +218,7 @@ function buildSteps(): Step[] {
       phase: "response",
       where: { side: "server", layer: "transport" },
       title: "TCPヘッダを付ける（分割は不要）",
-      description: `返事は ${RESPONSE_BYTES} バイトと小さいので、分割せずにそのまま TCP ヘッダを付けます。今度は送信元ポート 80 → 宛先ポート 50000 です。`,
+      description: `返事は ${RESPONSE_BYTES} バイトと小さいので、分割せずにそのまま TCP ヘッダを付けます。今度は送信元ポート 443 → 宛先ポート 50000 です。`,
       units: withParts(reply, HEADERS_TCP),
       focus: "tcp",
     },
@@ -242,7 +242,7 @@ function buildSteps(): Step[] {
       phase: "response",
       where: "wire",
       title: "ネットワークを流れる",
-      description: "返事のフレームがスマホに向かって流れていきます。",
+      description: "返事のフレームがブラウザに向かって流れていきます。",
       units: withParts(reply, HEADERS_ALL),
       arrival: [0],
     },
@@ -250,7 +250,7 @@ function buildSteps(): Step[] {
       phase: "response",
       where: { side: "client", layer: "link" },
       title: "宛先MACアドレスを確認",
-      description: "スマホは宛先 MAC アドレスと FCS を確認して、イーサネットヘッダを外します。",
+      description: "ブラウザ側のコンピュータは宛先 MAC アドレスと FCS を確認して、イーサネットヘッダを外します。",
       units: withParts(reply, HEADERS_ALL, true),
       focus: "eth",
       checks: [`宛先MAC ${c.mac} ＝ 自分の MAC アドレス → 受け取る`],
@@ -268,17 +268,17 @@ function buildSteps(): Step[] {
       phase: "response",
       where: { side: "client", layer: "transport" },
       title: "TCPヘッダの宛先ポートを確認",
-      description: "宛先ポート番号 50000 を見て、この返事を SNS アプリに渡します。",
+      description: "宛先ポート番号 50000 を見て、この返事をブラウザに渡します。",
       units: withParts(reply, HEADERS_TCP, true),
       focus: "tcp",
-      checks: [`宛先ポート ${c.port} → SNSアプリに渡す`],
+      checks: [`宛先ポート ${c.port} → ブラウザに渡す`],
     },
     {
       phase: "response",
       where: { side: "client", layer: "app" },
       title: "「投稿しました」と表示",
       description:
-        "SNS アプリが HTTP レスポンス（201 Created）を受け取り、画面に「投稿しました」と表示します。これで画像のアップロードが完了です。",
+        "ブラウザが HTTPS のレスポンス（201 Created）を受け取り、画面に「投稿しました」と表示します。これで画像のアップロードが完了です。",
       units: reply,
       focus: "data",
     },
@@ -353,125 +353,253 @@ function sliceOf(unit: Unit) {
 }
 
 const CIRCLED = ["①", "②", "③", "④", "⑤"];
+const PIECES = segments(IMAGE_BYTES).map((s, i): Unit => ({ no: i + 1, parts: DATA_ONLY, ...s }));
+const ARRIVAL = STEPS.find((s) => s.phase === "request" && s.arrival)!.arrival!;
 
-function PhotoView({ step }: { step: Step }) {
-  const pieces = step.units.filter((u) => u.no !== null);
-  const done = step.phase === "response";
-  const caption = done
-    ? "SNSサーバに保存された画像"
-    : pieces.length === 0
-      ? step.where !== "wire" && step.where.side === "server"
-        ? "元どおりにつながった画像"
-        : "投稿する画像（photo.jpg）"
-      : step.where === "wire"
-        ? "届いた順番（バラバラ）"
-        : "切り分けた画像";
+// ---------- 層の表（送信側・層の説明・受信側） ----------
 
+const ORDER: Layer[] = ["app", "transport", "internet", "link"];
+const WIRE_POS = 4;
+
+const LAYER_INFO: Record<Layer, { role: string; protocols: string }> = {
+  app: { role: "アプリケーションごとに決まったプロトコルを使う。", protocols: "HTTP・HTTPS（Webページ）、SMTP・POP・IMAP（電子メール）" },
+  transport: { role: "どのアプリケーションあてかを見分け、通信の信頼性を決める。", protocols: "TCP、UDP" },
+  internet: { role: "宛先のコンピュータまでデータを届ける。", protocols: "IP" },
+  link: { role: "ケーブルや電波など、物理的な通信の仕様を決める。", protocols: "イーサネット、Wi-Fi" },
+};
+
+const COLUMN = {
+  client: { color: "#e57399", bg: "#f8d7e3" },
+  server: { color: "#5aa9dc", bg: "#d4eaf8" },
+} as const;
+
+const CELL_BG = "#fffbea";
+const TCP_BLUE = "#1565c0";
+const IP_GREEN = "#2e9d3e";
+
+function senderOf(phase: Phase): Side {
+  return phase === "request" ? "client" : "server";
+}
+
+/** 1 回のやり取りの中での位置（送信側 0〜3、ケーブル 4、受信側 5〜8） */
+function cellPos(side: Side, layer: Layer, phase: Phase): number {
+  const i = ORDER.indexOf(layer);
+  return side === senderOf(phase) ? i : WIRE_POS + 1 + (3 - i);
+}
+
+function stepPos(step: Step): number {
+  return step.where === "wire" ? WIRE_POS : cellPos(step.where.side, step.where.layer, step.phase);
+}
+
+function Pill({ label }: { label: string }) {
   return (
-    <Box>
-      <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
-        📷 画像のようす：{caption}
-      </Typography>
-      <Box sx={{ width: "100%", maxWidth: 260, position: "relative" }}>
-        {pieces.length === 0 ? (
-          <Box sx={{ aspectRatio: "3 / 2", borderRadius: 1.5, boxShadow: 2, ...photoSlice(0, 1) }} />
-        ) : (
-          <Stack spacing={0.75}>
-            {pieces.map((u) => {
-              const { a, b } = sliceOf(u);
-              return (
-                <Box
-                  key={u.no}
-                  sx={{
-                    position: "relative",
-                    aspectRatio: `3 / ${2 * (b - a)}`,
-                    borderRadius: 1,
-                    boxShadow: 2,
-                    outline: "2px dashed #fff",
-                    outlineOffset: -3,
-                    transition: "all 0.4s",
-                    ...photoSlice(a, b),
-                  }}
-                >
-                  <Box
-                    sx={{
-                      position: "absolute",
-                      left: 6,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      bgcolor: "rgba(0,0,0,0.55)",
-                      color: "#fff",
-                      borderRadius: 1,
-                      px: 0.75,
-                      fontWeight: 700,
-                      fontSize: "0.85rem",
-                    }}
-                  >
-                    {CIRCLED[u.no! - 1]}
-                  </Box>
-                </Box>
-              );
-            })}
-          </Stack>
-        )}
-        {done && (
-          <Chip
-            icon={<CheckCircleIcon />}
-            label="保存済み"
-            color="success"
-            size="small"
-            sx={{ position: "absolute", top: 8, left: 8 }}
-          />
-        )}
+    <Box
+      component="span"
+      sx={{ bgcolor: "#7e57c2", color: "#fff", borderRadius: 99, px: 1.25, py: 0.1, fontSize: "0.72rem", fontWeight: 700, whiteSpace: "nowrap" }}
+    >
+      {label}
+    </Box>
+  );
+}
+
+function Strip({ unit }: { unit: Unit }) {
+  const { a, b } = sliceOf(unit);
+  return <Box sx={{ width: { xs: 22, sm: 44 }, height: 26, flexShrink: 0, ...photoSlice(a, b) }} />;
+}
+
+function Reply() {
+  return (
+    <Box sx={{ bgcolor: "#fff", border: "1px solid #bbb", px: 0.75, height: 26, display: "flex", alignItems: "center", fontSize: "0.7rem", fontWeight: 700, whiteSpace: "nowrap" }}>
+      201 投稿完了
+    </Box>
+  );
+}
+
+/** パケットの小さな絵：[IP][TCP 番号][中身] */
+function MiniPacket({ unit, phase, ip, tcp }: { unit: Unit | null; phase: Phase; ip?: "on" | "removed"; tcp?: "on" | "removed" }) {
+  return (
+    <Box sx={{ display: "flex", alignItems: "center" }}>
+      {ip && (
+        <Box
+          sx={{
+            height: 26,
+            px: 0.5,
+            display: "flex",
+            alignItems: "center",
+            fontSize: "0.62rem",
+            fontWeight: 700,
+            whiteSpace: "nowrap",
+            ...(ip === "on"
+              ? { bgcolor: IP_GREEN, color: "#fff" }
+              : { border: `2px dashed ${IP_GREEN}`, color: IP_GREEN, opacity: 0.7 }),
+          }}
+        >
+          IP
+        </Box>
+      )}
+      {tcp && (
+        <Box
+          sx={{
+            width: { xs: 18, sm: 24 },
+            height: 26,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontWeight: 700,
+            fontSize: { xs: "0.7rem", sm: "0.8rem" },
+            color: "#fff",
+            bgcolor: tcp === "on" ? TCP_BLUE : "#78909c",
+          }}
+        >
+          {unit?.no ?? "1"}
+        </Box>
+      )}
+      {phase === "request" && unit ? <Strip unit={unit} /> : <Reply />}
+    </Box>
+  );
+}
+
+function PacketRow({ units, phase, ip, tcp }: { units: (Unit | null)[]; phase: Phase; ip?: "on" | "removed"; tcp?: "on" | "removed" }) {
+  return (
+    <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap justifyContent="center">
+      {units.map((u, i) => (
+        <MiniPacket key={i} unit={u} phase={phase} ip={ip} tcp={tcp} />
+      ))}
+    </Stack>
+  );
+}
+
+function Photo({ width = 150 }: { width?: number }) {
+  return <Box sx={{ width, maxWidth: "100%", aspectRatio: "3 / 2", borderRadius: 1, boxShadow: 1, ...photoSlice(0, 1) }} />;
+}
+
+const flow = keyframes`
+  from { stroke-dashoffset: 40; }
+  to { stroke-dashoffset: 0; }
+`;
+
+function Waveform({ active }: { active: boolean }) {
+  return (
+    <Box
+      component="svg"
+      viewBox="0 0 200 36"
+      sx={{
+        width: "100%",
+        maxWidth: 200,
+        height: 36,
+        "& path": active ? { strokeDasharray: "8 2", animation: `${flow} 0.8s linear infinite` } : {},
+      }}
+    >
+      <path d="M0 28 H40 V8 H70 V28 H90 V8 H140 V28 H200" fill="none" stroke="#7b1fa2" strokeWidth="3" />
+    </Box>
+  );
+}
+
+/** 受信側トランスポート層：届いた順 → 番号順に並べ替え */
+function ReorderView() {
+  const n = PIECES.length;
+  const x = (slot: number) => ((slot + 0.5) / n) * 300;
+  return (
+    <Box sx={{ width: "100%", maxWidth: 300 }}>
+      <Box sx={{ display: "grid", gridTemplateColumns: `repeat(${n}, 1fr)`, justifyItems: "center" }}>
+        {PIECES.map((u) => (
+          <MiniPacket key={u.no} unit={u} phase="request" tcp="removed" />
+        ))}
+      </Box>
+      <Box component="svg" viewBox="0 0 300 30" preserveAspectRatio="none" sx={{ width: "100%", height: 30, display: "block" }}>
+        {ARRIVAL.map((no, j) => (
+          <line key={no} x1={x(j)} y1={28} x2={x(no - 1)} y2={2} stroke="#333" strokeWidth={2} />
+        ))}
+      </Box>
+      <Box sx={{ display: "grid", gridTemplateColumns: `repeat(${n}, 1fr)`, justifyItems: "center" }}>
+        {ARRIVAL.map((no) => (
+          <MiniPacket key={no} unit={PIECES[no - 1]} phase="request" tcp="on" />
+        ))}
       </Box>
     </Box>
   );
 }
 
-// ---------- 表示部品 ----------
+function cellContent(role: "sender" | "receiver", layer: Layer, phase: Phase, active: boolean): { text: string; visual: React.ReactNode } {
+  const up = phase === "request";
+  const reply = [null];
+  if (role === "sender") {
+    switch (layer) {
+      case "app":
+        return { text: up ? "画像データをトランスポート層へ送る。" : "「投稿完了」の返事をトランスポート層へ送る。", visual: up ? <Photo /> : <Reply /> };
+      case "transport":
+        return {
+          text: up
+            ? "データをパケットに分割する。TCPヘッダに番号とポート番号を記録し、インターネット層へ送る。"
+            : "小さいので分割しない。TCPヘッダにポート番号を記録し、インターネット層へ送る。",
+          visual: <PacketRow units={up ? PIECES : reply} phase={phase} tcp="on" />,
+        };
+      case "internet":
+        return {
+          text: "宛先と送信元のIPアドレスをIPヘッダに記録し、ネットワークインタフェース層へ送る。",
+          visual: <PacketRow units={up ? PIECES : reply} phase={phase} ip="on" tcp="on" />,
+        };
+      case "link":
+        return { text: "ネットワークへ信号として送り出す。", visual: <Waveform active={active} /> };
+    }
+  }
+  switch (layer) {
+    case "link":
+      return { text: "ネットワーク上の信号を受け取り、自分あてのものを取り込む。", visual: <Waveform active={active} /> };
+    case "internet":
+      return {
+        text: "自分あてのパケットを受け取り、IPヘッダを取り除いてトランスポート層へ送る。",
+        visual: <PacketRow units={up ? ARRIVAL.map((no) => PIECES[no - 1]) : reply} phase={phase} ip="removed" tcp="on" />,
+      };
+    case "transport":
+      return up
+        ? { text: "TCPヘッダの番号をもとに並べ替えて復元し、TCPヘッダを取り除く。", visual: <ReorderView /> }
+        : { text: "TCPヘッダのポート番号で渡す先を確認し、TCPヘッダを取り除く。", visual: <PacketRow units={reply} phase={phase} tcp="removed" /> };
+    case "app":
+      return up
+        ? { text: "画像データを受け取り、保存・表示する。", visual: <Photo /> }
+        : { text: "返事を受け取り、「投稿しました」と表示する。", visual: <Reply /> };
+  }
+}
 
-function LayerStack({ side, step }: { side: Side; step: Step }) {
-  const host = HOST[side];
-  const active = step.where !== "wire" && step.where.side === side ? step.where.layer : null;
-  const sending = (step.phase === "request") === (side === "client");
+function SideCell({ side, layer, step }: { side: Side; layer: Layer; step: Step }) {
+  const role = side === senderOf(step.phase) ? "sender" : "receiver";
+  const pos = cellPos(side, layer, step.phase);
+  const cur = stepPos(step);
+  const state = pos < cur ? "done" : pos === cur ? "active" : "pending";
+  const { text, visual } = cellContent(role, layer, step.phase, state === "active");
+  const color = LAYER_BY_ID[layer].color;
 
   return (
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <Typography textAlign="center" fontWeight={700} mb={0.5} sx={{ fontSize: { xs: "0.85rem", sm: "1rem" } }}>
-        {host.icon} {host.name}
-      </Typography>
-      <Typography textAlign="center" variant="caption" color="text.secondary" display="block" mb={1}>
-        {sending ? "送信 ⬇ ヘッダを付ける" : "受信 ⬆ ヘッダを外す"}
-      </Typography>
-      <Stack spacing={0.75}>
-        {LAYERS.map((layer) => {
-          const isActive = active === layer.id;
-          return (
-            <Box
-              key={layer.id}
-              sx={{
-                border: 2,
-                borderColor: layer.color,
-                borderRadius: 2,
-                px: 1,
-                py: 0.75,
-                bgcolor: isActive ? layer.color : "background.paper",
-                color: isActive ? "#fff" : "text.primary",
-                boxShadow: isActive ? 4 : 0,
-                transform: isActive ? "scale(1.04)" : "none",
-                transition: "all 0.3s",
-              }}
-            >
-              <Typography variant="body2" fontWeight={700} sx={{ fontSize: { xs: "0.7rem", sm: "0.82rem" } }}>
-                {layer.name}
-              </Typography>
-              <Typography variant="caption" sx={{ opacity: 0.85, fontSize: { xs: "0.62rem", sm: "0.7rem" } }}>
-                {layer.protocol}・{layer.osi}
-              </Typography>
-            </Box>
-          );
-        })}
+    <Box
+      sx={{
+        bgcolor: state === "active" ? "#fff1bf" : CELL_BG,
+        borderLeft: `3px solid ${COLUMN[side].color}`,
+        borderRight: `3px solid ${COLUMN[side].color}`,
+        p: { xs: 0.75, sm: 1.25 },
+        position: "relative",
+        boxShadow: state === "active" ? `inset 0 0 0 3px ${color}` : "none",
+        transition: "box-shadow 0.3s",
+        minWidth: 0,
+      }}
+    >
+      <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={1} mb={1}>
+        <Typography variant="body2" fontWeight={700} sx={{ fontSize: "0.8rem", lineHeight: 1.5 }}>
+          {text}
+        </Typography>
+        <Pill label={LAYER_BY_ID[layer].protocol === "イーサネット" ? "信号" : LAYER_BY_ID[layer].protocol} />
       </Stack>
+      <Box
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          opacity: state === "pending" ? 0.25 : 1,
+          filter: state === "pending" ? "grayscale(1)" : "none",
+          transition: "opacity 0.4s",
+        }}
+      >
+        {visual}
+      </Box>
     </Box>
   );
 }
@@ -480,67 +608,127 @@ const travelRight = keyframes`
   from { left: 0%; opacity: 0; }
   10% { opacity: 1; }
   90% { opacity: 1; }
-  to { left: calc(100% - 28px); opacity: 0; }
+  to { left: calc(100% - 26px); opacity: 0; }
 `;
 const travelLeft = keyframes`
-  from { left: calc(100% - 28px); opacity: 0; }
+  from { left: calc(100% - 26px); opacity: 0; }
   10% { opacity: 1; }
   90% { opacity: 1; }
   to { left: 0%; opacity: 0; }
 `;
 
-function Wire({ step, stepIndex }: { step: Step; stepIndex: number }) {
+function CenterCell({ layer, step, stepIndex }: { layer: Layer; step: Step; stepIndex: number }) {
+  const info = LAYER_INFO[layer];
+  const l = LAYER_BY_ID[layer];
+  const isLink = layer === "link";
   const toRight = step.phase === "request";
-  const active = step.where === "wire";
+  const onWire = step.where === "wire";
   return (
-    <Box sx={{ width: { xs: 52, sm: 96 }, flexShrink: 0, display: "flex", flexDirection: "column", justifyContent: "flex-end", pb: 1 }}>
-      <Typography variant="caption" textAlign="center" color="text.secondary" mb={0.5}>
-        ネットワーク
+    <Box sx={{ p: 1.25, textAlign: "center", display: "flex", flexDirection: "column", justifyContent: "center", gap: 0.75, minWidth: 0 }}>
+      <Typography fontWeight={700} sx={{ color: l.color, fontSize: "1rem" }}>
+        {l.name}
       </Typography>
-      <Box sx={{ position: "relative", height: 36 }}>
-        <Box
-          sx={{
-            position: "absolute",
-            top: "50%",
-            left: 0,
-            right: 0,
-            height: 4,
-            mt: "-2px",
-            borderRadius: 2,
-            bgcolor: active ? LAYER_BY_ID.link.color : "grey.400",
-          }}
-        />
-        {active &&
-          step.arrival!.map((no, i) => (
-            <Box
-              key={`${stepIndex}-${i}`}
-              sx={{
-                position: "absolute",
-                top: 4,
-                width: 28,
-                height: 28,
-                borderRadius: 1,
-                bgcolor: LAYER_BY_ID.link.color,
-                color: "#fff",
-                fontSize: "0.8rem",
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                opacity: 0,
-                animation: `${toRight ? travelRight : travelLeft} 1.6s ease-in-out ${i * 0.7}s infinite`,
-              }}
-            >
-              {no === 0 ? "✉️" : CIRCLED[no - 1]}
-            </Box>
-          ))}
-      </Box>
-      <Typography variant="caption" textAlign="center" fontSize="1.2rem" color={active ? LAYER_BY_ID.link.color : "grey.400"}>
-        {toRight ? "➡" : "⬅"}
+      <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.68rem" }}>
+        {l.osi}
       </Typography>
+      <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
+        {info.role}
+      </Typography>
+      <Typography variant="caption" sx={{ fontSize: "0.72rem" }}>
+        <Box component="span" sx={{ border: "1px solid #555", px: 0.5, mr: 0.5 }}>
+          代表的なプロトコル
+        </Box>
+        {info.protocols}
+      </Typography>
+      {isLink && (
+        <Box sx={{ position: "relative", height: 30, mt: 0.5 }}>
+          <Box sx={{ position: "absolute", top: 13, left: 0, right: 0, height: 4, bgcolor: "#e53950", borderRadius: 2 }} />
+          <Box
+            sx={{
+              position: "absolute",
+              top: 5,
+              [toRight ? "right" : "left"]: -4,
+              width: 0,
+              height: 0,
+              borderTop: "10px solid transparent",
+              borderBottom: "10px solid transparent",
+              [toRight ? "borderLeft" : "borderRight"]: "14px solid #e53950",
+            }}
+          />
+          {onWire &&
+            step.arrival!.map((no, i) => (
+              <Box
+                key={`${stepIndex}-${i}`}
+                sx={{
+                  position: "absolute",
+                  top: 2,
+                  width: 26,
+                  height: 26,
+                  borderRadius: 1,
+                  bgcolor: TCP_BLUE,
+                  color: "#fff",
+                  fontSize: "0.8rem",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: 0,
+                  animation: `${toRight ? travelRight : travelLeft} 1.6s ease-in-out ${i * 0.7}s infinite`,
+                }}
+              >
+                {no === 0 ? "✉" : no}
+              </Box>
+            ))}
+        </Box>
+      )}
     </Box>
   );
 }
+
+const ROW_SX = {
+  display: "grid",
+  gridTemplateColumns: { xs: "minmax(0, 1fr) minmax(0, 1fr)", md: "minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1fr)" },
+  "& > .center": { gridColumn: { xs: "1 / -1", md: "auto" }, order: { xs: -1, md: 0 } },
+} as const;
+
+function LayerTable({ step, stepIndex }: { step: Step; stepIndex: number }) {
+  const sender = senderOf(step.phase);
+  return (
+    <Box sx={{ borderRadius: 2, overflow: "hidden", border: "1px solid #ddd", bgcolor: CELL_BG }}>
+      {/* 見出し */}
+      <Box sx={ROW_SX}>
+        {(["client", "center", "server"] as const).map((key) =>
+          key === "center" ? (
+            <Box key={key} className="center" sx={{ display: { xs: "none", md: "block" } }} />
+          ) : (
+            <Box key={key} sx={{ bgcolor: COLUMN[key].bg, border: `3px solid ${COLUMN[key].color}`, borderBottomWidth: 0, p: 1, textAlign: "center" }}>
+              <Stack direction="row" spacing={1} justifyContent="center" alignItems="center" flexWrap="wrap" useFlexGap>
+                <Box component="span" sx={{ bgcolor: "#fff", borderRadius: 99, px: 1.25, fontSize: "0.75rem", fontWeight: 700 }}>
+                  {key === sender ? "送信側 ⬇" : "受信側 ⬆"}
+                </Box>
+                <Typography fontWeight={700}>{HOST[key].name}</Typography>
+              </Stack>
+              <Typography variant="caption" fontWeight={600}>
+                {HOST[key].note}
+              </Typography>
+            </Box>
+          ),
+        )}
+      </Box>
+      {ORDER.map((layer) => (
+        <Box key={layer} sx={{ ...ROW_SX, borderTop: "1px solid #999" }}>
+          <SideCell side="client" layer={layer} step={step} />
+          <Box className="center">
+            <CenterCell layer={layer} step={step} stepIndex={stepIndex} />
+          </Box>
+          <SideCell side="server" layer={layer} step={step} />
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+// ---------- データの中身 ----------
 
 function UnitBar({ unit, phase, selected, onSelect }: { unit: Unit; phase: Phase; selected: boolean; onSelect: () => void }) {
   const isImage = phase === "request";
@@ -633,46 +821,42 @@ export default function NetworkSimulator() {
   const location =
     step.where === "wire"
       ? "ネットワーク"
-      : `${HOST[step.where.side].short}・${LAYER_BY_ID[step.where.layer].name}`;
+      : `${HOST[step.where.side].name}・${LAYER_BY_ID[step.where.layer].name}`;
   const detailKinds = unit.parts.filter((p) => p !== "fcs");
 
   return (
     <Stack spacing={2}>
-      {/* 全体図と説明（横並び） */}
+      {/* 層の表と説明（横並び） */}
       <Box
         sx={{
           display: "grid",
-          gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1.15fr) minmax(0, 1fr)" },
+          gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 2.1fr) minmax(0, 1fr)" },
           gap: 2,
-          alignItems: "stretch",
+          alignItems: "start",
         }}
       >
         <Card sx={{ borderRadius: 3 }}>
           <CardContent>
-            <Stack direction="row" spacing={1} mb={2} justifyContent="center" flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={1} mb={1.5} justifyContent="center" flexWrap="wrap" useFlexGap>
               <Chip
                 size="small"
-                label="① 画像をアップロード：スマホ → サーバ"
+                label="① 画像をアップロード：ブラウザ → サーバ"
                 color={step.phase === "request" ? "primary" : "default"}
                 variant={step.phase === "request" ? "filled" : "outlined"}
               />
               <Chip
                 size="small"
-                label="② 返事：サーバ → スマホ"
+                label="② 返事：サーバ → ブラウザ"
                 color={step.phase === "response" ? "secondary" : "default"}
                 variant={step.phase === "response" ? "filled" : "outlined"}
               />
             </Stack>
-            <Box sx={{ display: "flex", alignItems: "stretch", gap: { xs: 0.5, sm: 1 } }}>
-              <LayerStack side="client" step={step} />
-              <Wire step={step} stepIndex={index} />
-              <LayerStack side="server" step={step} />
-            </Box>
+            <LayerTable step={step} stepIndex={index} />
           </CardContent>
         </Card>
 
-        <Card sx={{ borderRadius: 3, display: "flex", flexDirection: "column" }}>
-          <CardContent sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <Card sx={{ borderRadius: 3, position: { lg: "sticky" }, top: { lg: 16 } }}>
+          <CardContent>
             <Typography variant="caption" color="text.secondary">
               ステップ {index + 1} / {STEPS.length}　|　{location}
             </Typography>
@@ -696,11 +880,7 @@ export default function NetworkSimulator() {
               </Paper>
             )}
 
-            <Box sx={{ mt: 1.5 }}>
-              <PhotoView step={step} />
-            </Box>
-
-            <Stack direction="row" spacing={1} mt="auto" pt={2} justifyContent="center" flexWrap="wrap" useFlexGap>
+            <Stack direction="row" spacing={1} pt={2} justifyContent="center" flexWrap="wrap" useFlexGap>
               <Button size="small" variant="outlined" startIcon={<ArrowBackIcon />} disabled={index === 0} onClick={() => go(index - 1)}>
                 戻る
               </Button>
@@ -763,7 +943,7 @@ export default function NetworkSimulator() {
                   <Stack key={p} direction="row" spacing={0.5} alignItems="center">
                     <Box sx={{ width: 12, height: 12, borderRadius: 0.5, bgcolor: PART_STYLE[p].color }} />
                     <Typography variant="caption">
-                      {p === "eth" ? "イーサネットヘッダ / FCS" : p === "data" ? "データ（HTTP）" : `${PART_STYLE[p].label}ヘッダ`}
+                      {p === "eth" ? "イーサネットヘッダ / FCS" : p === "data" ? "データ（HTTPS）" : `${PART_STYLE[p].label}ヘッダ`}
                     </Typography>
                   </Stack>
                 ))}
@@ -786,7 +966,7 @@ export default function NetworkSimulator() {
                     }}
                   >
                     <Typography variant="body2" fontWeight={700} sx={{ color }} mb={0.5}>
-                      {kind === "eth" ? "イーサネットヘッダ" : kind === "data" ? "データ（HTTP）" : `${PART_STYLE[kind].label}ヘッダ`}
+                      {kind === "eth" ? "イーサネットヘッダ" : kind === "data" ? "データ（HTTPS）" : `${PART_STYLE[kind].label}ヘッダ`}
                       {focused && " ← 注目"}
                     </Typography>
                     {headerRows(kind, step.phase, unit).map(([k, v]) => (
