@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 export default function NetworkPage() {
   return (
     <Box sx={{ minHeight: "100vh", backgroundColor: "background.default", py: 4 }}>
-      <Container maxWidth="xl">
+      <Container maxWidth="lg">
         <Box textAlign="center" mb={3}>
           <Typography variant="h4" fontWeight={700} gutterBottom>
             🌐 ブラウザとWebサーバの通信
