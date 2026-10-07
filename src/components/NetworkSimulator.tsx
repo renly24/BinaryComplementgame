@@ -2,19 +2,21 @@
 import { useEffect, useState } from "react";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import IconButton from "@mui/material/IconButton";
+import Slider from "@mui/material/Slider";
 import Card from "@mui/material/Card";
 import CardContent from "@mui/material/CardContent";
 import Chip from "@mui/material/Chip";
-import LinearProgress from "@mui/material/LinearProgress";
 import Paper from "@mui/material/Paper";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { keyframes } from "@mui/material/styles";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
+import NavigateBeforeIcon from "@mui/icons-material/NavigateBefore";
+import NavigateNextIcon from "@mui/icons-material/NavigateNext";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import PauseIcon from "@mui/icons-material/Pause";
 import ReplayIcon from "@mui/icons-material/Replay";
+import SkipPreviousIcon from "@mui/icons-material/SkipPrevious";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 
 // ---------- モデル ----------
@@ -689,12 +691,137 @@ function CompareBox({ compare }: { compare: NonNullable<Step["compare"]> }) {
   );
 }
 
+const MAX_UNITS = Math.max(...STEPS.map((s) => s.units.length));
+const DETAIL_KINDS: PartKind[] = ["eth", "ip", "tcp", "data"];
+
+function senderOf(phase: Phase): Side {
+  return phase === "request" ? "client" : "server";
+}
+
+// ---------- プレイヤー（操作バー） ----------
+
+const SPEEDS = [0.5, 1, 2] as const;
+const BASE_INTERVAL = 4000;
+const REPLY_START = STEPS.findIndex((s) => s.phase === "response");
+
+interface PlayerProps {
+  index: number;
+  playing: boolean;
+  speed: number;
+  onSeek: (index: number) => void;
+  onTogglePlay: () => void;
+  onSpeed: () => void;
+}
+
+function PlayerBar({ index, playing, speed, onSeek, onTogglePlay, onSpeed }: PlayerProps) {
+  const step = STEPS[index];
+  const isLast = index === STEPS.length - 1;
+  const split = (REPLY_START / (STEPS.length - 1)) * 100;
+  const iconSx = { color: "#fff", "&.Mui-disabled": { color: "rgba(255,255,255,0.3)" } };
+
+  return (
+    <Box
+      sx={{
+        position: "sticky",
+        bottom: { xs: 8, sm: 12 },
+        zIndex: 10,
+        bgcolor: "#1d2330",
+        color: "#fff",
+        borderRadius: 3,
+        boxShadow: 8,
+        px: { xs: 1.5, sm: 2.5 },
+        pt: 1,
+        pb: 0.75,
+      }}
+    >
+      {/* シークバー */}
+      <Stack direction="row" alignItems="center" spacing={1.5}>
+        <Typography sx={{ fontSize: "0.75rem", fontVariantNumeric: "tabular-nums", minWidth: 44, opacity: 0.8 }}>
+          {index + 1} / {STEPS.length}
+        </Typography>
+        <Slider
+          aria-label="ステップ"
+          value={index + 1}
+          min={1}
+          max={STEPS.length}
+          step={1}
+          marks
+          onChange={(_, v) => onSeek((v as number) - 1)}
+          sx={{
+            color: step.phase === "request" ? "#64b5f6" : "#ce93d8",
+            height: 6,
+            py: 1.5,
+            "& .MuiSlider-rail": {
+              opacity: 1,
+              background: `linear-gradient(90deg, rgba(100,181,246,0.35) 0 ${split}%, rgba(206,147,216,0.35) ${split}% 100%)`,
+            },
+            "& .MuiSlider-mark": { bgcolor: "rgba(255,255,255,0.5)", width: 2, height: 6 },
+            "& .MuiSlider-thumb": { width: 16, height: 16, bgcolor: "#fff" },
+          }}
+        />
+      </Stack>
+      <Box sx={{ position: "relative", height: 16, ml: { xs: "56px", sm: "60px" }, mt: -0.5 }}>
+        <Typography sx={{ position: "absolute", left: 0, fontSize: "0.65rem", color: "#90caf9", whiteSpace: "nowrap" }}>
+          ① 画像をアップロード
+        </Typography>
+        <Typography sx={{ position: "absolute", left: `${split}%`, fontSize: "0.65rem", color: "#e1bee7", whiteSpace: "nowrap" }}>
+          ② 返事
+        </Typography>
+      </Box>
+
+      {/* ボタンとタイトル */}
+      <Stack direction="row" alignItems="center" spacing={{ xs: 0, sm: 0.5 }} mt={0.25}>
+        <IconButton aria-label="最初から" title="最初から" onClick={() => onSeek(0)} disabled={index === 0} sx={iconSx}>
+          <SkipPreviousIcon />
+        </IconButton>
+        <IconButton aria-label="戻る" title="戻る（←キー）" onClick={() => onSeek(index - 1)} disabled={index === 0} sx={iconSx}>
+          <NavigateBeforeIcon fontSize="large" />
+        </IconButton>
+        <IconButton
+          aria-label={playing ? "一時停止" : "自動再生"}
+          title={playing ? "一時停止" : isLast ? "もう一度再生" : "自動再生"}
+          onClick={onTogglePlay}
+          sx={{ bgcolor: "#fff", color: "#1d2330", mx: 0.5, "&:hover": { bgcolor: "#e3e8ef" } }}
+        >
+          {playing ? <PauseIcon fontSize="large" /> : isLast ? <ReplayIcon fontSize="large" /> : <PlayArrowIcon fontSize="large" />}
+        </IconButton>
+        <IconButton aria-label="次へ" title="次へ（→キー）" onClick={() => onSeek(index + 1)} disabled={isLast} sx={iconSx}>
+          <NavigateNextIcon fontSize="large" />
+        </IconButton>
+        <Typography
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            ml: 1,
+            fontWeight: 700,
+            fontSize: { xs: "0.8rem", sm: "0.95rem" },
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          {step.title}
+        </Typography>
+        <Button
+          size="small"
+          onClick={onSpeed}
+          title="自動再生の速さ"
+          sx={{ color: "#fff", border: "1px solid rgba(255,255,255,0.4)", minWidth: 0, px: 1, textTransform: "none", fontVariantNumeric: "tabular-nums" }}
+        >
+          {speed}x
+        </Button>
+      </Stack>
+    </Box>
+  );
+}
+
 // ---------- 本体 ----------
 
 export default function NetworkSimulator() {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [selected, setSelected] = useState(0);
+  const [speed, setSpeed] = useState<number>(1);
 
   const step = STEPS[index];
   const isLast = index === STEPS.length - 1;
@@ -711,15 +838,28 @@ export default function NetworkSimulator() {
       setIndex(index + 1);
       setSelected(0);
       if (index + 1 === STEPS.length - 1) setPlaying(false);
-    }, 4000);
+    }, BASE_INTERVAL / speed);
     return () => clearTimeout(timer);
-  }, [playing, index, isLast]);
+  }, [playing, index, isLast, speed]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLElement && e.target.closest("input, textarea, [role=slider]")) return;
+      if (e.key === "ArrowRight") setIndex((i) => Math.min(STEPS.length - 1, i + 1));
+      else if (e.key === "ArrowLeft") setIndex((i) => Math.max(0, i - 1));
+      else return;
+      setSelected(0);
+      setPlaying(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const location =
     step.where === "wire"
       ? "ネットワーク"
       : `${HOST[step.where.side].short}・${LAYER_BY_ID[step.where.layer].name}`;
-  const detailKinds = unit.parts.filter((p) => p !== "fcs");
+  const receiving = step.where !== "wire" && step.where.side !== senderOf(step.phase);
 
   return (
     <Stack spacing={2}>
@@ -730,6 +870,8 @@ export default function NetworkSimulator() {
           gridTemplateColumns: { xs: "1fr", md: "minmax(0, 1.15fr) minmax(0, 1fr)" },
           gap: 2,
           alignItems: "stretch",
+          // ステップごとに高さが変わって下のカードが動かないよう、最も長いステップに合わせる
+          minHeight: { md: 660, lg: 615 },
         }}
       >
         <Card sx={{ borderRadius: 3 }}>
@@ -758,10 +900,9 @@ export default function NetworkSimulator() {
 
         <Card sx={{ borderRadius: 3, display: "flex", flexDirection: "column" }}>
           <CardContent sx={{ flex: 1, display: "flex", flexDirection: "column" }}>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
               ステップ {index + 1} / {STEPS.length}　|　{location}
             </Typography>
-            <LinearProgress variant="determinate" value={((index + 1) / STEPS.length) * 100} sx={{ my: 1, borderRadius: 1 }} />
             <Typography variant="h6" fontWeight={700} gutterBottom>
               {step.title}
             </Typography>
@@ -786,43 +927,12 @@ export default function NetworkSimulator() {
               <PhotoView step={step} />
             </Box>
 
-            <Stack direction="row" spacing={1} mt="auto" pt={2} justifyContent="center" flexWrap="wrap" useFlexGap>
-              <Button size="small" variant="outlined" startIcon={<ArrowBackIcon />} disabled={index === 0} onClick={() => go(index - 1)}>
-                戻る
-              </Button>
-              <Button
-                size="small"
-                variant="contained"
-                color={playing ? "warning" : "success"}
-                startIcon={playing ? <PauseIcon /> : <PlayArrowIcon />}
-                onClick={() => {
-                  if (isLast) go(0);
-                  setPlaying((p) => !p);
-                }}
-              >
-                {playing ? "一時停止" : "自動再生"}
-              </Button>
-              <Button size="small" variant="contained" endIcon={<ArrowForwardIcon />} disabled={isLast} onClick={() => go(index + 1)}>
-                次へ
-              </Button>
-              <Button
-                size="small"
-                variant="text"
-                startIcon={<ReplayIcon />}
-                onClick={() => {
-                  setPlaying(false);
-                  go(0);
-                }}
-              >
-                最初から
-              </Button>
-            </Stack>
           </CardContent>
         </Card>
       </Box>
 
-      {/* データの中身 */}
-      <Card sx={{ borderRadius: 3 }}>
+      {/* データの中身（高さ固定） */}
+      <Card sx={{ borderRadius: 3, minHeight: { xs: 835, md: 515, lg: 495 } }}>
         <CardContent>
           <Box
             sx={{
@@ -841,6 +951,10 @@ export default function NetworkSimulator() {
               <Stack spacing={0.5}>
                 {step.units.map((u, i) => (
                   <UnitBar key={`${index}-${i}`} unit={u} phase={step.phase} selected={u === unit} onSelect={() => setSelected(i)} />
+                ))}
+                {/* 行数が変わっても高さが変わらないよう、空き行を確保する */}
+                {Array.from({ length: MAX_UNITS - step.units.length }, (_, i) => (
+                  <Box key={`blank-${i}`} sx={{ height: 54 }} />
                 ))}
               </Stack>
 
@@ -863,8 +977,9 @@ export default function NetworkSimulator() {
                   選んだデータに付いているヘッダです（上の「🪪 自分のアドレス」とは別のものです）
                 </Typography>
               </Box>
-              {detailKinds.map((kind) => {
-                const focused = step.focus === kind;
+              {DETAIL_KINDS.map((kind) => {
+                const present = unit.parts.includes(kind);
+                const focused = present && step.focus === kind;
                 const color = PART_STYLE[kind].color;
                 return (
                   <Paper
@@ -874,12 +989,19 @@ export default function NetworkSimulator() {
                       p: 1.25,
                       borderWidth: focused ? 3 : 1,
                       borderColor: focused ? color : "divider",
+                      borderStyle: present ? "solid" : "dashed",
                       boxShadow: focused ? 3 : 0,
+                      opacity: present ? 1 : 0.45,
                     }}
                   >
                     <Typography variant="body2" fontWeight={700} sx={{ color }} mb={0.5}>
                       {kind === "eth" ? "イーサネットヘッダ" : kind === "data" ? "データ（HTTP）" : `${PART_STYLE[kind].label}ヘッダ`}
                       {focused && " ← 注目"}
+                      {!present && (
+                        <Box component="span" sx={{ color: "text.secondary", fontWeight: 600 }}>
+                          {receiving ? "（外した）" : "（まだ付いていない）"}
+                        </Box>
+                      )}
                     </Typography>
                     {headerRows(kind, step.phase, unit).map(([k, v]) => (
                       <Stack key={k} direction="row" justifyContent="space-between" spacing={1}>
@@ -887,7 +1009,7 @@ export default function NetworkSimulator() {
                           {k}
                         </Typography>
                         <Typography variant="body2" fontWeight={600} textAlign="right" sx={{ fontFamily: "monospace" }}>
-                          {v}
+                          {present ? v : "—"}
                         </Typography>
                       </Stack>
                     ))}
@@ -898,6 +1020,21 @@ export default function NetworkSimulator() {
           </Box>
         </CardContent>
       </Card>
+
+      <PlayerBar
+        index={index}
+        playing={playing}
+        speed={speed}
+        onSeek={(i) => {
+          setPlaying(false);
+          go(i);
+        }}
+        onTogglePlay={() => {
+          if (isLast) go(0);
+          setPlaying((p) => !p);
+        }}
+        onSpeed={() => setSpeed((v) => SPEEDS[(SPEEDS.indexOf(v as (typeof SPEEDS)[number]) + 1) % SPEEDS.length])}
+      />
     </Stack>
   );
 }
