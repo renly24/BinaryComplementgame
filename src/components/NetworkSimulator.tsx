@@ -298,18 +298,18 @@ function headerRows(kind: PartKind, phase: Phase, unit: Unit): [string, string][
   switch (kind) {
     case "eth":
       return [
-        ["宛先MACアドレス", dst.mac],
-        ["送信元MACアドレス", src.mac],
+        ["宛先MAC", dst.mac],
+        ["送信元MAC", src.mac],
       ];
     case "ip":
       return [
-        ["送信元IPアドレス", src.ip],
-        ["宛先IPアドレス", dst.ip],
+        ["送信元IP", src.ip],
+        ["宛先IP", dst.ip],
       ];
     case "tcp":
       return [
-        ["送信元ポート番号", String(src.port)],
-        ["宛先ポート番号", String(dst.port)],
+        ["送信元ポート", String(src.port)],
+        ["宛先ポート", String(dst.port)],
         ["シーケンス番号", String(unit.seq)],
       ];
     case "data":
@@ -375,13 +375,13 @@ function PhotoView({ step }: { step: Step }) {
   return (
     <Box>
       <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
-        📷 画像のようす：{caption}
+        📷 {caption}
       </Typography>
-      <Box sx={{ width: "100%", maxWidth: 260, position: "relative" }}>
+      <Box sx={{ width: "100%", maxWidth: 170, position: "relative" }}>
         {pieces.length === 0 ? (
           <Box sx={{ aspectRatio: "3 / 2", borderRadius: 1.5, boxShadow: 2, ...photoSlice(0, 1) }} />
         ) : (
-          <Stack spacing={0.75}>
+          <Stack spacing={0.5}>
             {pieces.map((u) => {
               const { a, b } = sliceOf(u);
               return (
@@ -511,7 +511,7 @@ function LayerStack({ side, step }: { side: Side; step: Step }) {
                 borderColor: layer.color,
                 borderRadius: 2,
                 px: 1,
-                py: 0.75,
+                py: 0.4,
                 bgcolor: isActive ? layer.color : "background.paper",
                 color: isActive ? "#fff" : "text.primary",
                 boxShadow: isActive ? 4 : 0,
@@ -610,7 +610,7 @@ function UnitBar({ unit, phase, selected, onSelect }: { unit: Unit; phase: Phase
         display: "flex",
         alignItems: "center",
         gap: 1,
-        p: 0.75,
+        p: 0.5,
         borderRadius: 2,
         cursor: "pointer",
         outline: selected ? 2 : 0,
@@ -622,7 +622,7 @@ function UnitBar({ unit, phase, selected, onSelect }: { unit: Unit; phase: Phase
       <Typography sx={{ width: 28, textAlign: "center", fontWeight: 700 }}>
         {unit.no ? CIRCLED[unit.no - 1] : isImage ? "🖼️" : "✉️"}
       </Typography>
-      <Box sx={{ display: "flex", flex: 1, minWidth: 0, height: 38 }}>
+      <Box sx={{ display: "flex", flex: 1, minWidth: 0, height: 30 }}>
         {unit.parts.map((p) => {
           const st = PART_STYLE[p];
           const isData = p === "data";
@@ -663,7 +663,7 @@ function UnitBar({ unit, phase, selected, onSelect }: { unit: Unit; phase: Phase
 
 function CompareBox({ compare }: { compare: NonNullable<Step["compare"]> }) {
   const box = (icon: string, title: string, value: string, bg: string, border: string) => (
-    <Box sx={{ flex: 1, minWidth: 0, p: 1, borderRadius: 1.5, bgcolor: bg, border }}>
+    <Box sx={{ flex: 1, minWidth: 0, px: 1, py: 0.5, borderRadius: 1.5, bgcolor: bg, border }}>
       <Typography sx={{ fontSize: "0.72rem", fontWeight: 700, color: "text.secondary" }}>
         {icon} {title}
       </Typography>
@@ -673,7 +673,7 @@ function CompareBox({ compare }: { compare: NonNullable<Step["compare"]> }) {
     </Box>
   );
   return (
-    <Paper variant="outlined" sx={{ mt: 1.5, p: 1.25, borderColor: "success.main" }}>
+    <Paper variant="outlined" sx={{ mt: 1, p: 1, borderColor: "success.main" }}>
       <Stack direction="row" spacing={1} alignItems="center">
         {box("✉️", `ヘッダに書かれた宛先${compare.label}`, compare.header, "#fff", "2px solid #bdbdbd")}
         <Typography fontWeight={700} fontSize="1.4rem" color="success.main">
@@ -681,7 +681,7 @@ function CompareBox({ compare }: { compare: NonNullable<Step["compare"]> }) {
         </Typography>
         {box("🪪", `自分の${compare.label}`, compare.mine, "#eceff1", "2px solid #90a4ae")}
       </Stack>
-      <Stack direction="row" spacing={1} alignItems="center" mt={1}>
+      <Stack direction="row" spacing={1} alignItems="center" mt={0.75}>
         <CheckCircleIcon color="success" fontSize="small" />
         <Typography variant="body2" fontWeight={700}>
           一致 → {compare.result}
@@ -690,6 +690,13 @@ function CompareBox({ compare }: { compare: NonNullable<Step["compare"]> }) {
     </Paper>
   );
 }
+
+/** 各ステップで高さが変わらないよう、最も高くなるステップに合わせた最小の高さ（px） */
+const TOP_MIN_MD = 545;
+const TOP_MIN_LG = 455;
+const DATA_MIN_XS = 632;
+const DATA_MIN_MD = 320;
+const DATA_MIN_LG = 280;
 
 const MAX_UNITS = Math.max(...STEPS.map((s) => s.units.length));
 const DETAIL_KINDS: PartKind[] = ["eth", "ip", "tcp", "data"];
@@ -730,8 +737,8 @@ function PlayerBar({ index, playing, speed, onSeek, onTogglePlay, onSpeed }: Pla
         borderRadius: 3,
         boxShadow: 8,
         px: { xs: 1.5, sm: 2.5 },
-        pt: 1,
-        pb: 0.75,
+        pt: 0.5,
+        pb: 0.5,
       }}
     >
       {/* シークバー */}
@@ -750,7 +757,7 @@ function PlayerBar({ index, playing, speed, onSeek, onTogglePlay, onSpeed }: Pla
           sx={{
             color: step.phase === "request" ? "#64b5f6" : "#ce93d8",
             height: 6,
-            py: 1.5,
+            py: 1,
             "& .MuiSlider-rail": {
               opacity: 1,
               background: `linear-gradient(90deg, rgba(100,181,246,0.35) 0 ${split}%, rgba(206,147,216,0.35) ${split}% 100%)`,
@@ -775,18 +782,19 @@ function PlayerBar({ index, playing, speed, onSeek, onTogglePlay, onSpeed }: Pla
           <SkipPreviousIcon />
         </IconButton>
         <IconButton aria-label="戻る" title="戻る（←キー）" onClick={() => onSeek(index - 1)} disabled={index === 0} sx={iconSx}>
-          <NavigateBeforeIcon fontSize="large" />
+          <NavigateBeforeIcon  />
         </IconButton>
         <IconButton
           aria-label={playing ? "一時停止" : "自動再生"}
           title={playing ? "一時停止" : isLast ? "もう一度再生" : "自動再生"}
           onClick={onTogglePlay}
-          sx={{ bgcolor: "#fff", color: "#1d2330", mx: 0.5, "&:hover": { bgcolor: "#e3e8ef" } }}
+          size="small"
+          sx={{ bgcolor: "#fff", color: "#1d2330", mx: 0.5, p: 0.75, "&:hover": { bgcolor: "#e3e8ef" } }}
         >
-          {playing ? <PauseIcon fontSize="large" /> : isLast ? <ReplayIcon fontSize="large" /> : <PlayArrowIcon fontSize="large" />}
+          {playing ? <PauseIcon  /> : isLast ? <ReplayIcon  /> : <PlayArrowIcon  />}
         </IconButton>
         <IconButton aria-label="次へ" title="次へ（→キー）" onClick={() => onSeek(index + 1)} disabled={isLast} sx={iconSx}>
-          <NavigateNextIcon fontSize="large" />
+          <NavigateNextIcon  />
         </IconButton>
         <Typography
           sx={{
@@ -871,7 +879,7 @@ export default function NetworkSimulator() {
           gap: 2,
           alignItems: "stretch",
           // ステップごとに高さが変わって下のカードが動かないよう、最も長いステップに合わせる
-          minHeight: { md: 660, lg: 615 },
+          minHeight: { md: TOP_MIN_MD, lg: TOP_MIN_LG },
         }}
       >
         <Card sx={{ borderRadius: 3 }}>
@@ -903,15 +911,20 @@ export default function NetworkSimulator() {
             <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
               ステップ {index + 1} / {STEPS.length}　|　{location}
             </Typography>
-            <Typography variant="h6" fontWeight={700} gutterBottom>
+            <Typography variant="h6" fontWeight={700} mb={0.5} sx={{ fontSize: "1.1rem" }}>
               {step.title}
             </Typography>
-            <Typography variant="body2" sx={{ lineHeight: 1.8, fontSize: "0.95rem" }}>
-              {step.description}
-            </Typography>
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems="flex-start">
+              <Typography variant="body2" sx={{ lineHeight: 1.7, fontSize: "0.92rem", flex: 1, minWidth: 0 }}>
+                {step.description}
+              </Typography>
+              <Box sx={{ width: { xs: 150, sm: 150 }, flexShrink: 0 }}>
+                <PhotoView step={step} />
+              </Box>
+            </Stack>
             {step.compare && <CompareBox compare={step.compare} />}
             {step.checks && (
-              <Paper variant="outlined" sx={{ mt: 1.5, p: 1.25, borderColor: "success.main", bgcolor: "#f1f8e9" }}>
+              <Paper variant="outlined" sx={{ mt: 1, p: 1, borderColor: "success.main", bgcolor: "#f1f8e9" }}>
                 {step.checks.map((c) => (
                   <Stack key={c} direction="row" spacing={1} alignItems="center" py={0.25}>
                     <CheckCircleIcon color="success" fontSize="small" />
@@ -923,16 +936,12 @@ export default function NetworkSimulator() {
               </Paper>
             )}
 
-            <Box sx={{ mt: 1.5 }}>
-              <PhotoView step={step} />
-            </Box>
-
           </CardContent>
         </Card>
       </Box>
 
       {/* データの中身（高さ固定） */}
-      <Card sx={{ borderRadius: 3, minHeight: { xs: 835, md: 515, lg: 495 } }}>
+      <Card sx={{ borderRadius: 3, minHeight: { xs: DATA_MIN_XS, md: DATA_MIN_MD, lg: DATA_MIN_LG } }}>
         <CardContent>
           <Box
             sx={{
@@ -942,11 +951,11 @@ export default function NetworkSimulator() {
             }}
           >
             <Box>
-              <Typography fontWeight={700} gutterBottom>
+              <Typography fontWeight={700}>
                 📦 いまのデータ（{step.units.length > 1 ? `${step.units.length}個に分割` : "1個"}）
               </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" mb={1}>
-                クリックすると、そのデータのヘッダの中身が表示されます
+              <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                クリックすると、そのデータのヘッダの中身を表示します
               </Typography>
               <Stack spacing={0.5}>
                 {step.units.map((u, i) => (
@@ -954,7 +963,7 @@ export default function NetworkSimulator() {
                 ))}
                 {/* 行数が変わっても高さが変わらないよう、空き行を確保する */}
                 {Array.from({ length: MAX_UNITS - step.units.length }, (_, i) => (
-                  <Box key={`blank-${i}`} sx={{ height: 54 }} />
+                  <Box key={`blank-${i}`} sx={{ height: 38 }} />
                 ))}
               </Stack>
 
@@ -970,13 +979,12 @@ export default function NetworkSimulator() {
               </Stack>
             </Box>
 
-            <Stack spacing={1.25}>
-              <Box>
-                <Typography fontWeight={700}>✉️ ヘッダに書かれている内容</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  選んだデータに付いているヘッダです（上の「🪪 自分のアドレス」とは別のものです）
-                </Typography>
-              </Box>
+            <Box>
+              <Typography fontWeight={700}>✉️ ヘッダに書かれている内容</Typography>
+              <Typography variant="caption" color="text.secondary" display="block" mb={0.5}>
+                選んだデータに付いているヘッダです（上の「🪪 自分のアドレス」とは別のものです）
+              </Typography>
+              <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
               {DETAIL_KINDS.map((kind) => {
                 const present = unit.parts.includes(kind);
                 const focused = present && step.focus === kind;
@@ -986,7 +994,8 @@ export default function NetworkSimulator() {
                     key={kind}
                     variant="outlined"
                     sx={{
-                      p: 1.25,
+                      px: 1,
+                      py: 0.75,
                       borderWidth: focused ? 3 : 1,
                       borderColor: focused ? color : "divider",
                       borderStyle: present ? "solid" : "dashed",
@@ -994,7 +1003,7 @@ export default function NetworkSimulator() {
                       opacity: present ? 1 : 0.45,
                     }}
                   >
-                    <Typography variant="body2" fontWeight={700} sx={{ color }} mb={0.5}>
+                    <Typography variant="body2" fontWeight={700} sx={{ color, fontSize: "0.82rem" }} mb={0.25}>
                       {kind === "eth" ? "イーサネットヘッダ" : kind === "data" ? "データ（HTTP）" : `${PART_STYLE[kind].label}ヘッダ`}
                       {focused && " ← 注目"}
                       {!present && (
@@ -1004,11 +1013,17 @@ export default function NetworkSimulator() {
                       )}
                     </Typography>
                     {headerRows(kind, step.phase, unit).map(([k, v]) => (
-                      <Stack key={k} direction="row" justifyContent="space-between" spacing={1}>
-                        <Typography variant="body2" color="text.secondary">
+                      <Stack
+                        key={k}
+                        direction={{ xs: "column", sm: "row" }}
+                        justifyContent="space-between"
+                        alignItems={{ xs: "flex-start", sm: "baseline" }}
+                        columnGap={1}
+                      >
+                        <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: "0.7rem", sm: "0.8rem" }, whiteSpace: "nowrap" }}>
                           {k}
                         </Typography>
-                        <Typography variant="body2" fontWeight={600} textAlign="right" sx={{ fontFamily: "monospace" }}>
+                        <Typography variant="body2" fontWeight={600} sx={{ fontFamily: "monospace", fontSize: { xs: "0.72rem", sm: "0.8rem" }, textAlign: { sm: "right" }, overflowWrap: "anywhere" }}>
                           {present ? v : "—"}
                         </Typography>
                       </Stack>
@@ -1016,7 +1031,8 @@ export default function NetworkSimulator() {
                   </Paper>
                 );
               })}
-            </Stack>
+              </Box>
+            </Box>
           </Box>
         </CardContent>
       </Card>

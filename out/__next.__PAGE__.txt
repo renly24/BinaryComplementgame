@@ -3,7 +3,7 @@
 3:I[52683,["/BinaryComplementgame/_next/static/chunks/0wssrl.cenwmg.js","/BinaryComplementgame/_next/static/chunks/12iclfyvwpbw1.js","/BinaryComplementgame/_next/static/chunks/0d3shmwh5_nmn.js","/BinaryComplementgame/_next/static/chunks/07mafc-xu3x2z.js","/BinaryComplementgame/_next/static/chunks/0uw6ok7t96_7v.js"],"default"]
 6:I[97367,["/BinaryComplementgame/_next/static/chunks/0wssrl.cenwmg.js","/BinaryComplementgame/_next/static/chunks/12iclfyvwpbw1.js","/BinaryComplementgame/_next/static/chunks/0d3shmwh5_nmn.js"],"OutletBoundary"]
 7:"$Sreact.suspense"
-0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"Component":"$3","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@4","$@5"]}}],[["$","script","script-0",{"src":"/BinaryComplementgame/_next/static/chunks/07mafc-xu3x2z.js","async":true}],["$","script","script-1",{"src":"/BinaryComplementgame/_next/static/chunks/0uw6ok7t96_7v.js","async":true}]],["$","$L6",null,{"children":["$","$7",null,{"name":"Next.MetadataOutlet","children":"$@8"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"bWZtQW7YyjVwJNMOUQDpO"}
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"Component":"$3","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@4","$@5"]}}],[["$","script","script-0",{"src":"/BinaryComplementgame/_next/static/chunks/07mafc-xu3x2z.js","async":true}],["$","script","script-1",{"src":"/BinaryComplementgame/_next/static/chunks/0uw6ok7t96_7v.js","async":true}]],["$","$L6",null,{"children":["$","$7",null,{"name":"Next.MetadataOutlet","children":"$@8"}]}]]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"i5i0hlp6cHDiNFBFyhpPn"}
 4:{}
 5:"$0:rsc:props:children:0:props:serverProvidedParams:params"
 8:null

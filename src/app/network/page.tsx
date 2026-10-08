@@ -12,16 +12,16 @@ export const metadata: Metadata = {
 
 export default function NetworkPage() {
   return (
-    <Box sx={{ minHeight: "100vh", backgroundColor: "background.default", py: 4 }}>
+    <Box sx={{ minHeight: "100vh", backgroundColor: "background.default", py: { xs: 1.5, sm: 2 } }}>
       <Container maxWidth="lg">
-        <Box textAlign="center" mb={3}>
-          <Typography variant="h4" fontWeight={700} gutterBottom>
+        <Box textAlign="center" mb={1.5}>
+          <Typography variant="h5" component="h1" fontWeight={700} sx={{ fontSize: { xs: "1.3rem", sm: "1.6rem" } }}>
             🌐 ブラウザとWebサーバの通信
           </Typography>
           <Typography variant="body2" color="text.secondary">
             SNSに画像を投稿するとき、データがどう分割・確認・統合されるかをTCP/IPの4つの層で見てみよう
           </Typography>
-          <Typography variant="body2" mt={1}>
+          <Typography variant="caption">
             <Link href="/">← 2進数 補数ゲームへ</Link>
           </Typography>
         </Box>
